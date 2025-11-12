@@ -42,7 +42,7 @@ class Document(Base):
     language = Column(String(10), default="ko")  # 문서 언어 (ko, en 등)
 
     # 추가 정보
-    doc_metadata = Column(JSONB, default=dict)  # 추가 메타데이터 (자유 형식 JSONB)
+    doc_metadata = Column("metadata", JSONB, default=dict)  # 추가 메타데이터 (자유 형식 JSONB)
     processing_status = Column(String(20), default="pending")  # 처리 상태 (pending, processing, completed, failed)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())  # 생성일
@@ -73,7 +73,7 @@ class DocumentLayout(Base):
     bbox = Column(JSONB, nullable=False)  # Bounding Box 좌표 {x1, y1, x2, y2}
     content = Column(Text)  # 텍스트 내용 (text 타입인 경우)
     asset_id = Column(UUID(as_uuid=True), ForeignKey("document_asset.id", ondelete="SET NULL"))  # 관련 에셋 ID
-    layout_metadata = Column(JSONB, default=dict)  # 추가 메타데이터 (폰트, 색상 등)
+    layout_metadata = Column("metadata", JSONB, default=dict)  # 추가 메타데이터 (폰트, 색상 등)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())  # 생성일
 
@@ -99,7 +99,7 @@ class DocumentAsset(Base):
     raw_data = Column(Text)  # 원본 데이터
     description = Column(Text)  # LLM 생성 설명 (이미지 캡션 등)
     extracted_text = Column(Text)  # OCR 추출 텍스트 (이미지 내 텍스트)
-    asset_metadata = Column(JSONB, default=dict)  # 추가 메타데이터
+    asset_metadata = Column("metadata", JSONB, default=dict)  # 추가 메타데이터
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())  # 생성일
 
@@ -132,7 +132,7 @@ class DocumentChunk(Base):
     full_text_search = Column(Text)  # PostgreSQL Full-Text Search 벡터
 
     # 메타데이터
-    chunk_metadata = Column(JSONB, default=dict)  # 추가 메타데이터
+    chunk_metadata = Column("metadata", JSONB, default=dict)  # 추가 메타데이터
     token_count = Column(Integer, nullable=False)  # 토큰 수
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())  # 생성일
