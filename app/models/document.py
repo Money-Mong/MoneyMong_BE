@@ -129,7 +129,6 @@ class DocumentChunk(Base):
 
     # 검색 최적화
     keywords = Column(ARRAY(String), default=list)  # 추출된 핵심 키워드 리스트 (키워드 검색용)
-    full_text_search = Column(Text)  # PostgreSQL Full-Text Search 벡터
 
     # 메타데이터
     chunk_metadata = Column("metadata", JSONB, default=dict)  # 추가 메타데이터
