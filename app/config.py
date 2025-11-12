@@ -26,12 +26,16 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 시간
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7일
 
     # OpenAI
     OPENAI_API_KEY: str
 
     # CORS
-    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:8000"]
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",  # React 프론트엔드
+        "http://localhost:8000"   # FastAPI Docs 테스트용
+    ]
     
     # LangChain
     LANGCHAIN_TRACING_V2: str = "false"  # 기본값 설정 가능

@@ -7,6 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.api.v1 import api_router
+from app.logging_config import setup_logging
+
+# 로깅 설정 초기화
+setup_logging()
 
 settings = get_settings()
 
@@ -15,6 +19,9 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     debug=settings.DEBUG,
+    swagger_ui_parameters={
+        "persistAuthorization": True  # 인증 정보 유지
+    }
 )
 
 # Configure CORS
