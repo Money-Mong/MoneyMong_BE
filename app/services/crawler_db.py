@@ -11,13 +11,15 @@ Naver Finance 기업리포트 - 경량 테스트 버전
     - 매일 자동 실행용
 - 문서 단위 트랜잭션, DB 중복 확인
 
+DB 연결에서 기입 필요
+- DB_CONFIG 
+
 """
 import os
 import re
 import time
 import datetime as dt
 from urllib.parse import urljoin, urlparse, parse_qs
-import json
 import psycopg
 import requests
 from bs4 import BeautifulSoup
@@ -46,12 +48,12 @@ else:
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # -------------------DB 연결-----------------------
-DB_CONFIG ={
-    "host": "localhost",
+DB_CONFIG = {
+    "host": "YOUR_HOST_HERE",
     "port": 5432,
-    "dbname": "moneymong",
-    "user": "postgres",
-    "password": "5412"
+    "dbname": "YOUR_DB_NAME",
+    "user": "YOUR_USERNAME",
+    "password": "YOUR_PASSWORD"
 }
 
 def get_connection():
