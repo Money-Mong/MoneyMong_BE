@@ -20,9 +20,11 @@ import re
 import time
 import datetime as dt
 from urllib.parse import urljoin, urlparse, parse_qs
-import psycopg
+import psycopg2
 import requests
 from bs4 import BeautifulSoup
+
+from app.config import get_settings
 
 # ------------------- 설정 -------------------
 MODE = "DAILY" # 'INIT' or 'DAILY'
@@ -37,27 +39,43 @@ DEBUG_ONE = False # True : 첫 문서에서 종료
 
 # 하루치(오늘 - 1일 이후)
 KST = dt.timezone(dt.timedelta(hours=9))
-TODAY = dt.datetime.now(KST).date()
-if MODE == "INIT":
-    CUTOFF_DATE = TODAY - dt.timedelta(days=365)  # 1년치
-    MAX_PAGE = 2000  # 초기 수집은 더 깊게
-else:
-    CUTOFF_DATE = TODAY - dt.timedelta(days=1)
-    MAX_PAGE = 500  # 기본 500페이지 가드
 
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # -------------------DB 연결-----------------------
+settings = get_settings()
 DB_CONFIG = {
-    "host": "YOUR_HOST_HERE",
-    "port": 5432,
-    "dbname": "YOUR_DB_NAME",
-    "user": "YOUR_USERNAME",
-    "password": "YOUR_PASSWORD"
+    "host": settings.POSTGRES_HOST,
+    "port": settings.POSTGRES_PORT,
+    "dbname": settings.POSTGRES_DB,
+    "user": settings.POSTGRES_USER,
+    "password": settings.POSTGRES_PASSWORD,
 }
 
 def get_connection():
-    return psycopg.connect(**DB_CONFIG)
+    return psycopg2.connect(**DB_CONFIG)
+
+
+def resolve_crawl_window(run_mode: str, today: dt.date):
+    """
+    Return (cutoff_date, max_page) for the requested mode.
+    """
+    run_mode = run_mode.upper()
+    if run_mode == "INIT":
+        return today - dt.timedelta(days=365), 2000
+    if run_mode == "DAILY":
+        return today - dt.timedelta(days=1), 500
+    raise ValueError(f"Unsupported mode: {run_mode}")
+
+
+def build_crawl_result(run_mode, today, cutoff_date, total_saved, last_seen_date):
+    return {
+        "mode": run_mode,
+        "today": today,
+        "cutoff_date": cutoff_date,
+        "total_saved": total_saved,
+        "last_seen_date": last_seen_date,
+    }
 
 
 # ------------------- 유틸 -------------------
@@ -87,7 +105,11 @@ def date_hierarchy_dir(d: dt.date):
     return os.path.join(OUT_DIR, f"{d:%Y}", f"{d:%m}", f"{d:%d}")
 
 # ------------------- 메인 로직 -------------------
-def crawl_multi_pages():
+def crawl_multi_pages(mode: str | None = None):
+    run_mode = (mode or MODE).upper()
+    today = dt.datetime.now(KST).date()
+    cutoff_date, max_page = resolve_crawl_window(run_mode, today)
+
     sess = requests.Session()
     sess.headers.update({"User-Agent": UA, "Referer": REFERER})
     total_saved = 0
@@ -122,13 +144,13 @@ def crawl_multi_pages():
             # 날짜
             date_td = tr.select_one("td.date")
             date_text = date_td.get_text(strip=True) if date_td else tds[-1].get_text(strip=True)
-            pub_date = parse_date(date_text, TODAY)  # ← 2자리 연도/월.일까지 처리하는 parse_date로
+            pub_date = parse_date(date_text, today)  # ← 2자리 연도/월.일까지 처리하는 parse_date로
             if not pub_date:
                 continue
             last_seen_date = pub_date
 
             # 컷오프 필터
-            if pub_date < CUTOFF_DATE:
+            if pub_date < cutoff_date:
                 continue  # 이 행은 패스, 다른 행 확인(페이지 전체 종료 판단은 아래에서)
             page_has_target = True
 
@@ -267,7 +289,7 @@ def crawl_multi_pages():
             # 디버그용: 하나만 가져오고 종료
             if DEBUG_ONE:
                 print("[INFO] DEBUG_ONE=True → 첫 문서까지만 처리 후 종료")
-                return
+                return build_crawl_result(run_mode, today, cutoff_date, total_saved, last_seen_date)
             
             time.sleep(SLEEP)
 
@@ -278,17 +300,17 @@ def crawl_multi_pages():
             break
 
         page += 1
-        if page > MAX_PAGE:  # 안전 가드
-            print("[INFO] page>{MAX_PAGE} 가드로 종료")
+        if page > max_page:  # 안전 가드
+            print(f"[INFO] page>{max_page} 가드로 종료")
             break
 
-    print(f"[DONE] 총 저장: {total_saved}건")
+    print(f"[DONE] 모드={run_mode} / 기준: {cutoff_date}~{today} / 총 저장: {total_saved}건")
+    return build_crawl_result(run_mode, today, cutoff_date, total_saved, last_seen_date)
 
-if __name__ == "__main__":
-    print(f'[INFO] 수집 기준: {CUTOFF_DATE} ~ {TODAY}')
-    crawl_multi_pages()
+# if __name__ == "__main__":
+#     print(f'[INFO] 수집 기준: {CUTOFF_DATE} ~ {TODAY}')
+#     crawl_multi_pages()
 
 
     # print(f"[INFO] 테스트 모드: 1페이지, 하루치만 수집 (기준: {CUTOFF_DATE} ~ {TODAY})")
     # crawl_one_page_one_day()
-
