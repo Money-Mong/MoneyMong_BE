@@ -38,6 +38,8 @@ async def run_naver_report_crawler(
             "status": "completed",
             "mode": result["mode"],
             "cutoff_date": str(result["cutoff_date"]),
+             "pdf_saved": result["pdf_saved"],
+             "db_saved": result["db_saved"],
             "total_saved": result["total_saved"],
             "last_seen_date": str(result["last_seen_date"]) if result["last_seen_date"] else None,
         }

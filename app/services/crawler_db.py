@@ -68,12 +68,14 @@ def resolve_crawl_window(run_mode: str, today: dt.date):
     raise ValueError(f"Unsupported mode: {run_mode}")
 
 
-def build_crawl_result(run_mode, today, cutoff_date, total_saved, last_seen_date):
+def build_crawl_result(run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date):
     return {
         "mode": run_mode,
         "today": today,
         "cutoff_date": cutoff_date,
-        "total_saved": total_saved,
+        "pdf_saved": pdf_saved,
+        "db_saved": db_saved,
+        "total_saved": db_saved,  # backwards compatibility
         "last_seen_date": last_seen_date,
     }
 
@@ -113,7 +115,8 @@ def crawl_multi_pages(mode: str | None = None):
 
     sess = requests.Session()
     sess.headers.update({"User-Agent": UA, "Referer": REFERER})
-    total_saved = 0
+    pdf_saved = 0
+    db_saved = 0
     page = 1
     last_seen_date = None
 
@@ -250,7 +253,7 @@ def crawl_multi_pages(mode: str | None = None):
                         for chunk in pr.iter_content(1024 * 64):
                             if chunk:
                                 f.write(chunk)
-                total_saved += 1
+                pdf_saved += 1
                 print(f"[SAVE] {out_path}")
             except Exception as e:
                 print(f"[WARN] PDF 실패: {pdf_url} | {e}")
@@ -285,12 +288,12 @@ def crawl_multi_pages(mode: str | None = None):
                     )
                 conn.commit()
             print(f"DB 저장 완료 -> {nid}")
-            total_saved += 1
+            db_saved += 1
 
             # 디버그용: 하나만 가져오고 종료
             if DEBUG_ONE:
                 print("[INFO] DEBUG_ONE=True → 첫 문서까지만 처리 후 종료")
-                return build_crawl_result(run_mode, today, cutoff_date, total_saved, last_seen_date)
+                return build_crawl_result(run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date)
             
             time.sleep(SLEEP)
 
@@ -305,8 +308,11 @@ def crawl_multi_pages(mode: str | None = None):
             print(f"[INFO] page>{max_page} 가드로 종료")
             break
 
-    print(f"[DONE] 모드={run_mode} / 기준: {cutoff_date}~{today} / 총 저장: {total_saved}건")
-    return build_crawl_result(run_mode, today, cutoff_date, total_saved, last_seen_date)
+    print(
+        f"[DONE] 모드={run_mode} / 기준: {cutoff_date}~{today} / "
+        f"PDF 저장={pdf_saved}건 / DB 저장={db_saved}건"
+    )
+    return build_crawl_result(run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date)
 
 # if __name__ == "__main__":
 #     print(f'[INFO] 수집 기준: {CUTOFF_DATE} ~ {TODAY}')
