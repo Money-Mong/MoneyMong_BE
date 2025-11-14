@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.rag import AskRequest, AskResponse
 from app.services.rag_service import run_rag_pipeline
-from app.database import get_db  # 너의 database.py 안에 있는 dependency라고 가정
+from app.database import get_db
 
 router = APIRouter(tags=["RAG"])
 
