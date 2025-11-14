@@ -30,7 +30,7 @@ from app.config import get_settings
 MODE = "DAILY" # 'INIT' or 'DAILY'
 BASE = "https://finance.naver.com"
 LIST_TPL = "https://finance.naver.com/research/company_list.naver?page={page}"  # 풀페이지
-OUT_DIR = "naver_reports_test"  # 테스트 출력 폴더
+OUT_DIR = os.path.join("raw-documents", "naver_corp_reports")  # S3 raw-documents 하위 폴더
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
 REFERER = "https://finance.naver.com/research/company_list.naver"
 TIMEOUT = 30
@@ -100,9 +100,10 @@ def norm_filename(s: str, maxlen: int = 150):
 def date_hierarchy_dir(d: dt.date):
     """
     리포트 날짜별로 계층형 폴더 생성:
-    OUT_DIR/YYYY/MM/DD
+    OUT_DIR/YYYY/Mon/DD  (예: 2025/Nov/07)
     """
-    return os.path.join(OUT_DIR, f"{d:%Y}", f"{d:%m}", f"{d:%d}")
+    month_dirname = d.strftime("%b")  # Jan, Feb, ...
+    return os.path.join(OUT_DIR, f"{d:%Y}", month_dirname, f"{d:%d}")
 
 # ------------------- 메인 로직 -------------------
 def crawl_multi_pages(mode: str | None = None):

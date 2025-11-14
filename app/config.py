@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
     RELOAD: bool = True
 
+    # AWS
+    AWS_AAWS_ACCESS_KEY_ID: str
+    AWS_SECRET_ACCESS_KEY: str
+    AWS_REGION: str = "ap-northeast-2"
+    AWS_S3_BUCKET: str = "moneymong-resources-bucket"
+
+
     class Config:
         env_file = ".env"
         case_sensitive = True # 대소문자 주의
