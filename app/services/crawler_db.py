@@ -19,12 +19,14 @@ import os
 import re
 import time
 import datetime as dt
+from io import BytesIO
 from urllib.parse import urljoin, urlparse, parse_qs
 import psycopg2
 import requests
 from bs4 import BeautifulSoup
 
 from app.config import get_settings
+from app.services.s3_client import get_s3_client
 
 # ------------------- 설정 -------------------
 MODE = "DAILY" # 'INIT' or 'DAILY'
@@ -40,10 +42,9 @@ DEBUG_ONE = False # True : 첫 문서에서 종료
 # 하루치(오늘 - 1일 이후)
 KST = dt.timezone(dt.timedelta(hours=9))
 
-os.makedirs(OUT_DIR, exist_ok=True)
-
 # -------------------DB 연결-----------------------
 settings = get_settings()
+s3_client = get_s3_client()
 DB_CONFIG = {
     "host": settings.POSTGRES_HOST,
     "port": settings.POSTGRES_PORT,
@@ -241,26 +242,33 @@ def crawl_multi_pages(mode: str | None = None):
 
             # PDF 다운로드
             ## 저장 경로 및 파일명 구성
-            out_dir = date_hierarchy_dir(pub_date)
-            os.makedirs(out_dir, exist_ok=True)
+            out_dir = date_hierarchy_dir(pub_date).replace(os.sep, "/")
+            out_dir = out_dir.strip("/")
             fname = norm_filename(f"{title}") + ".pdf"
-            out_path = os.path.join(out_dir, fname)
+            s3_key = f"{out_dir}/{fname}"
+            s3_uri = f"s3://{settings.AWS_S3_BUCKET}/{s3_key}"
 
             try:
-                with sess.get(pdf_url, timeout=TIMEOUT, stream=True) as pr:
-                    pr.raise_for_status()
-                    with open(out_path, "wb") as f:
+                with BytesIO() as pdf_buffer:
+                    with sess.get(pdf_url, timeout=TIMEOUT, stream=True) as pr:
+                        pr.raise_for_status()
                         for chunk in pr.iter_content(1024 * 64):
                             if chunk:
-                                f.write(chunk)
+                                pdf_buffer.write(chunk)
+
+                    file_size = pdf_buffer.tell()
+                    pdf_buffer.seek(0)
+                    s3_client.upload_fileobj(
+                        pdf_buffer,
+                        settings.AWS_S3_BUCKET,
+                        s3_key,
+                        ExtraArgs={"ContentType": "application/pdf"},
+                    )
                 pdf_saved += 1
-                print(f"[SAVE] {out_path}")
+                print(f"[S3 UPLOAD] {s3_uri}")
             except Exception as e:
                 print(f"[WARN] PDF 실패: {pdf_url} | {e}")
                 continue
-
-            ### 파일크기 확인
-            file_size = os.path.getsize(out_path)
 
             # DB 저장
             with get_connection() as conn:
@@ -281,7 +289,7 @@ def crawl_multi_pages(mode: str | None = None):
                          title,
                          broker,
                          pub_date,
-                         out_path,
+                         s3_uri,
                          file_size,
                          None
                         )
