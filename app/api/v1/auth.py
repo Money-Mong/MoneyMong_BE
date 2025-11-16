@@ -218,7 +218,7 @@ async def logout(
     Headers:
     Authorization: Bearer <access_token>
     """
-    # TODO: 프론트 만들고 나서 하기
+    # TODO: 프론트 만들고 나서 하기, 1차적으론 프론트 레벨에서 대응 가능함
     return {"message": "Logout successful"}
 
 
