@@ -1,0 +1,21 @@
+# .pre-commit-config.yaml
+# 공식 문서: https://pre-commit.com/
+#
+# 설치 방법:
+# 1. pre-commit 설치: pip install pre-commit
+# 2. git hook 설치: pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff의 최신 버전을 사용하도록 rev를 유지
+    rev: 'v0.5.0'
+    hooks:
+      - id: ruff-format
+        # .py, .pyi, .ipynb 파일에 대해 포맷팅 실행
+        types_or: [python, pyi, jupyter]
+      - id: ruff
+        # 포맷팅으로 수정된 파일을 포함하여 린트 검사 및 자동 수정 실행
+        types_or: [python, pyi, jupyter]
+        # '--fix' 옵션으로 자동 수정 활성화
+        # '--exit-non-zero-on-fix' 옵션으로 자동 수정이 발생하면 커밋을 중단시켜
+        # 개발자가 수정 내용을 확인하고 다시 커밋하도록 유도
+        args: [--fix, --exit-non-zero-on-fix]
