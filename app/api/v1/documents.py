@@ -137,34 +137,3 @@ async def get_document_summary(
         updated_at=summary.updated_at
     )
 
-
-@router.post("/{document_id}/conversations", status_code=status.HTTP_201_CREATED, summary="문서 기반 대화 빠른 시작")
-async def start_document_conversation(
-    document_id: UUID,
-    current_user: User = Depends(get_current_user),
-    document_service: DocumentService = Depends(get_document_service)
-):
-    """
-    문서 페이지에서 바로 대화 시작
-
-    **프론트엔드 UX**: 문서 상세 페이지에서 "채팅 시작" 버튼 클릭 시
-
-    Returns:
-    - 생성된 대화 정보 {id, session_type, primary_document, created_at}
-
-    **TODO 구현 사항**:
-    1. 문서 존재 여부 확인
-    2. session_type='report_based'로 대화 생성
-    3. primary_document_id = document_id 설정
-    4. title은 문서 제목 기반 자동 생성
-    """
-    # TODO: 구현 필요
-    # 1. document_service.get_document_by_id(document_id) 존재 확인
-    # 2. conversation_service.create_conversation(
-    #       user_id=current_user.id,
-    #       session_type='report_based',
-    #       document_id=document_id,
-    #       title=f"{document.title} 분석"
-    #    )
-    # 3. 생성된 대화 정보 반환
-    pass

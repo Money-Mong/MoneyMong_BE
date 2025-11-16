@@ -9,6 +9,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
+from app.services.rag_service import RAGService
 from app.models.conversation import Conversation, Message
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ class ConversationService:
 
     def __init__(self, db: Session):
         self.db = db
+        self.rag_service = RAGService(db)
 
     def get_conversations(
         self,
@@ -93,7 +95,8 @@ class ConversationService:
     def create_conversation(
         self,
         user_id: UUID,
-        document_id: Optional[UUID] = None,
+        session_type: str,
+        primary_document_id: Optional[UUID] = None,
         title: Optional[str] = None
     ) -> Conversation:
         """
@@ -101,7 +104,8 @@ class ConversationService:
 
         Args:
             user_id: 사용자 ID
-            document_id: 문서 ID (선택)
+            session_type: 세션 타입 ('general', 'report_based')
+            primary_document_id: 문서 ID (선택)
             title: 대화 제목 (선택)
 
         Returns:
@@ -110,7 +114,8 @@ class ConversationService:
         try:
             conversation = Conversation(
                 user_id=user_id,
-                document_id=document_id,
+                session_type=session_type,
+                primary_document_id=primary_document_id,
                 title=title or "새 대화"
             )
 
@@ -238,3 +243,122 @@ class ConversationService:
         except Exception as e:
             logger.error(f"Error counting conversations for user {user_id}: {str(e)}")
             raise
+
+    def count_conversation_messages(self, conversation_id: UUID, user_id: UUID) -> int:
+        """
+        특정 대화의 전체 메시지 개수 조회
+
+        Args:
+            conversation_id: 대화 ID
+            user_id: 사용자 ID
+
+        Returns:
+            메시지 개수
+        """
+        try:
+            # 대화 소유권 확인
+            conversation = self.get_conversation_by_id(conversation_id, user_id)
+            if not conversation:
+                return 0
+
+            count = (
+                self.db.query(Message)
+                .filter(Message.conversation_id == conversation_id)
+                .count()
+            )
+            return count
+
+        except Exception as e:
+            logger.error(f"Error counting messages for conversation {conversation_id}: {str(e)}")
+            raise
+
+    async def process_user_message(
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+        content: str
+    ) -> Message:
+        """
+        비즈니스 로직: 메시지 처리 및 AI 응답 생성
+        
+        Service 책임:
+        - 대화 소유권 확인
+        - 메시지 저장
+        - RAG 조율
+        - 트랜잭션 관리
+        """
+        try:
+            # 1. 대화 확인
+            conversation = self.get_conversation_by_id(conversation_id, user_id)
+            if not conversation:
+                raise ValueError("Conversation not found")
+            
+            # 2. 사용자 메시지 저장
+            user_message = self._save_user_message(conversation_id, content)
+            
+            # 3. 히스토리 조회
+            history = self._get_message_history(conversation_id, limit=10)
+            
+            # 4. RAG 실행 (RAG Service에 위임)
+            rag_result = await self.rag_service.generate_conversation_response(
+                question=content,
+                document_id=conversation.primary_document_id,
+                conversation_history=history
+            )
+            
+            # 5. AI 메시지 저장
+            ai_message = self._save_ai_message(conversation_id, rag_result)
+            
+            # 6. 대화 시간 갱신
+            self._update_conversation_timestamp(conversation)
+            
+            # 7. 커밋
+            self.db.commit()
+            self.db.refresh(ai_message)
+            
+            return ai_message
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error: {str(e)}")
+            raise
+
+    def _save_user_message(self, conversation_id: UUID, content: str) -> Message:
+        """Private helper: 사용자 메시지 저장"""
+        msg = Message(conversation_id=conversation_id, role="user", content=content)
+        self.db.add(msg)
+        self.db.flush()
+        return msg
+
+    def _save_ai_message(self, conversation_id: UUID, rag_result: dict) -> Message:
+        """Private helper: AI 메시지 저장"""
+        msg = Message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=rag_result["answer"],
+            cited_chunks=rag_result.get("cited_chunks", []),
+            follow_up_questions=rag_result.get("follow_up_questions", []),
+            reference_context=rag_result.get("reference_context", {}),
+            model_version=rag_result.get("model_version"),
+            token_usage=rag_result.get("token_usage", {}),
+            latency_ms=rag_result.get("latency_ms")
+        )
+        self.db.add(msg)
+        self.db.flush()
+        return msg
+
+    def _get_message_history(self, conversation_id: UUID, limit: int = 5) -> list:
+        """Private helper: 히스토리 조회 및 포맷팅"""
+        messages = (
+            self.db.query(Message)
+            .filter(Message.conversation_id == conversation_id)
+            .order_by(Message.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        messages.reverse()
+        return [{"role": m.role, "content": m.content} for m in messages]
+
+    def _update_conversation_timestamp(self, conversation: Conversation):
+        """Private helper: 시간 갱신"""
+        conversation.updated_at = datetime.utcnow()

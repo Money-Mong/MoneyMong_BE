@@ -178,8 +178,10 @@ async def get_conversation_messages(
         limit=limit
     )
     
-    # 메시지 총 개수 계산 (간단하게 len 사용, 추후 count 쿼리로 최적화 가능)
-    total = len(messages) if skip == 0 else skip + len(messages)
+    total = conversation_service.count_conversation_messages(
+        conversation_id=conversation_id, 
+        user_id=current_user.id
+    )
 
     items = [
         MessageBase(
@@ -187,12 +189,8 @@ async def get_conversation_messages(
             conversation_id=str(msg.conversation_id),
             role=msg.role,
             content=msg.content,
-            cited_chunks=msg.cited_chunks,
+            cited_chunks=[str(chunk_id) for chunk_id in msg.cited_chunks] if msg.cited_chunks else [],
             follow_up_questions=msg.follow_up_questions,
-            reference_context=msg.reference_context,
-            model_version=msg.model_version,
-            token_usage=msg.token_usage,
-            latency_ms=msg.latency_ms,
             created_at=msg.created_at
         )
         for msg in messages
@@ -218,34 +216,18 @@ async def send_message(
     - MessageCreateResponse: 생성된 AI 응답 메시지
 
     **TODO 구현 필요 사항**:
-    1. RAG 검색 (conversation.primary_document_id 기반)
-    2. LLM 호출 (Langchain)
-    3. 스트리밍 지원 (SSE)
-    4. cited_chunks, follow_up_questions 생성
+    1. 스트리밍 지원 (SSE)
+    2. session_type 체크로 청크 사용여부 분기
     """
-    # 대화 소유권 확인
-    conversation = conversation_service.get_conversation_by_id(conversation_id, current_user.id)
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    # 메시지 저장
-    # conversation_service.add_message
-    # AI message 생성
-    # ai_message = TODO 지현님이 구축한 메시지 로직 붙이기
-
-    """    return MessageCreateResponse(
-        id=str(ai_message.id),
-        conversation_id=str(ai_message.conversation_id),
-        role=ai_message.role,
-        content=ai_message.content,
-        cited_chunks=ai_message.cited_chunks,
-        follow_up_questions=ai_message.follow_up_questions,
-        reference_context=ai_message.reference_context,
-        model_version=ai_message.model_version,
-        token_usage=ai_message.token_usage,
-        latency_ms=ai_message.latency_ms,
-        created_at=ai_message.created_at
-    )
-    """
-    pass
-
+    try:
+        ai_message = await conversation_service.process_user_message(
+            conversation_id=conversation_id,
+            user_id=current_user.id,
+            content=request.content
+        )
+        return ai_message
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        # 로깅을 추가하여 서버 오류를 추적하는 것이 좋습니다.
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")

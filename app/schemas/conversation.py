@@ -4,7 +4,8 @@ API 스키마
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel
+from uuid import UUID
+from pydantic import BaseModel, field_validator
 
 
 # ===================================
@@ -20,8 +21,8 @@ class TokenUsage(BaseModel):
 
 class MessageBase(BaseModel):
     """메시지 기본 정보"""
-    id: str
-    conversation_id: str
+    id: UUID
+    conversation_id: UUID
     role: str  # 'user' | 'assistant' | 'system'
     content: str
     cited_chunks: Optional[List[str]] = None  # 참조된 청크 ID
@@ -34,6 +35,17 @@ class MessageBase(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator('token_usage', mode='before')
+    @classmethod
+    def empty_dict_to_none(cls, v):
+        """
+        DB에서 오는 빈 JSONB 필드 `{}`를 None으로 변환하여
+        선택적(Optional) Pydantic 모델 유효성 검사를 통과시킵니다.
+        """
+        if v == {}:
+            return None
+        return v
 
 
 # ===================================

@@ -38,6 +38,7 @@ class DocumentService:
             documents = (
                 self.db.query(Document)
                 .options(joinedload(Document.summary))  # DocumentSummary 조인
+                .filter(Document.processing_status == 'completed')
                 .order_by(desc(Document.created_at))
                 .offset(skip)
                 .limit(limit)
@@ -67,7 +68,7 @@ class DocumentService:
         try:
             document = (
                 self.db.query(Document)
-                .filter(Document.id == document_id)
+                .filter(Document.id == document_id, Document.processing_status == 'completed')
                 .first()
             )
 

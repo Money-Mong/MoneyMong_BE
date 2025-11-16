@@ -156,8 +156,6 @@ class DocumentSummary(Base):
     summary_long = Column(Text, nullable=False)  # 긴 요약 (1000자 이내)
     key_points = Column(ARRAY(Text), default=list)  # 핵심 포인트 리스트
     entities = Column(JSONB, default=dict)  # NER 추출 엔티티 (회사명, 인명, 수치 등)
-    topics = Column(ARRAY(String), default=list)  # 주제/카테고리 태그
-    sentiment = Column(String(20))  # 전반적 감정 (positive, neutral, negative)
 
     # 처리 메타데이터
     model_version = Column(String(50), nullable=False)  # 사용된 LLM 모델 버전
