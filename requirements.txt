@@ -3,8 +3,8 @@ fastapi==0.121.1
 uvicorn[standard]==0.38.0
 pydantic==2.12.4
 pydantic-settings==2.11.0
-pydantic[email]
-
+# pydantic[email]==2.3.0
+pydantic[email]==2.12.4 # pydantic-settings와 버전 충돌로 변경
 
 # LLM Agent Framework
 # langsmith==0.4.42 
