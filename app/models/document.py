@@ -61,14 +61,14 @@ class DocumentLayout(Base):
 
     __tablename__ = "document_layout"
     __table_args__ = (
-        CheckConstraint("element_type IN ('text', 'image', 'table', 'chart', 'header', 'footer', 'caption')", name="chk_element_type"),
+        CheckConstraint("element_type IN ('background', 'caption', 'footnote', 'formula', 'list-item', 'page-footer', 'page-header', 'picture', 'section-header', 'table', 'text', 'title')", name="chk_element_type"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
 
     page_number = Column(Integer, nullable=False)  # 페이지 번호
-    element_type = Column(String(50), nullable=False)  # 요소 타입 (text, image, table, chart, header, footer, caption)
+    element_type = Column(String(50), nullable=False)  # 요소 타입 ('background', 'caption', 'footnote', 'formula', 'list-item', 'page-footer', 'page-header', 'picture', 'section-header', 'table', 'text', 'title')
     element_order = Column(Integer, nullable=False)  # 페이지 내 요소 순서
     bbox = Column(JSONB, nullable=False)  # Bounding Box 좌표 {x1, y1, x2, y2}
     content = Column(Text)  # 텍스트 내용 (text 타입인 경우)
@@ -156,8 +156,6 @@ class DocumentSummary(Base):
     summary_long = Column(Text, nullable=False)  # 긴 요약 (1000자 이내)
     key_points = Column(ARRAY(Text), default=list)  # 핵심 포인트 리스트
     entities = Column(JSONB, default=dict)  # NER 추출 엔티티 (회사명, 인명, 수치 등)
-    topics = Column(ARRAY(String), default=list)  # 주제/카테고리 태그
-    sentiment = Column(String(20))  # 전반적 감정 (positive, neutral, negative)
 
     # 처리 메타데이터
     model_version = Column(String(50), nullable=False)  # 사용된 LLM 모델 버전

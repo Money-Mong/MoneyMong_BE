@@ -30,6 +30,13 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str
+    
+    # HuggingFace
+    HF_API_KEY: str
+
+    # Upstage
+    UPSTAGE_API_KEY: str
+
 
     # CORS
     BACKEND_CORS_ORIGINS: list[str] = [
