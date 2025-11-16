@@ -2,8 +2,9 @@
 어플리케이션 레벨 설정
 """
 
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -30,32 +31,31 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str
-    
+
     # HuggingFace
     HF_API_KEY: str
 
     # Upstage
     UPSTAGE_API_KEY: str
 
-
     # CORS
     BACKEND_CORS_ORIGINS: list[str] = [
         "http://localhost:3000",  # React 프론트엔드
-        "http://localhost:8000"   # FastAPI Docs 테스트용
+        "http://localhost:8000",  # FastAPI Docs 테스트용
     ]
-    
+
     # LangChain
     LANGCHAIN_TRACING_V2: str = "false"  # 기본값 설정 가능
-    LANGCHAIN_API_KEY: str | None = None # 선택적 필드로 설정 가능
+    LANGCHAIN_API_KEY: str | None = None  # 선택적 필드로 설정 가능
     LANGCHAIN_PROJECT: str = "default"
-    
+
     # DB
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
     POSTGRES_DB: str
     POSTGRES_HOST: str
-    POSTGRES_PORT: int = 5432 # 타입 힌트와 기본값 활용
-    
+    POSTGRES_PORT: int = 5432  # 타입 힌트와 기본값 활용
+
     # API
     API_HOST: str = "localhost"
     API_PORT: int = 8000
@@ -69,7 +69,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
-        case_sensitive = True # 대소문자 주의
+        case_sensitive = True  # 대소문자 주의
 
 
 @lru_cache()

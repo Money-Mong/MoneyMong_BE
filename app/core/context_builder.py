@@ -1,5 +1,6 @@
 # app/core/context_builder.py
 
+
 def build_context(chunks, max_length=700):
     """
     여러 chunk의 'content'를 조합하여 context 문자열 생성

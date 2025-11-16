@@ -4,19 +4,21 @@ Document API Endpoints
 
 from typing import List
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.v1.auth import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.api.v1.auth import get_current_user
-from app.services.document_service import DocumentService
 from app.schemas import (
     DocumentBase,
-    DocumentListResponse,
     DocumentDetailResponse,
+    DocumentListResponse,
     DocumentSummaryResponse,
 )
+from app.services.document_service import DocumentService
+
 
 router = APIRouter()
 
@@ -31,7 +33,7 @@ async def get_documents(
     skip: int = 0,
     limit: int = 20,
     current_user: User = Depends(get_current_user),
-    document_service: DocumentService = Depends(get_document_service)
+    document_service: DocumentService = Depends(get_document_service),
 ):
     """
     문서 목록 조회 (모든 사용자 공통)
@@ -61,7 +63,7 @@ async def get_documents(
             metadata=doc.doc_metadata,
             processing_status=doc.processing_status,
             created_at=doc.created_at,
-            updated_at=doc.updated_at
+            updated_at=doc.updated_at,
         )
         for doc in documents
     ]
@@ -69,11 +71,13 @@ async def get_documents(
     return DocumentListResponse(total=total, items=items)
 
 
-@router.get("/{document_id}", summary="개별 문서 조회", response_model=DocumentDetailResponse)
+@router.get(
+    "/{document_id}", summary="개별 문서 조회", response_model=DocumentDetailResponse
+)
 async def get_document(
     document_id: UUID,
     current_user: User = Depends(get_current_user),
-    document_service: DocumentService = Depends(get_document_service)
+    document_service: DocumentService = Depends(get_document_service),
 ):
     """
     개별 문서 조회
@@ -102,15 +106,19 @@ async def get_document(
         metadata=document.doc_metadata,
         processing_status=document.processing_status,
         created_at=document.created_at,
-        updated_at=document.updated_at
+        updated_at=document.updated_at,
     )
 
 
-@router.get("/{document_id}/summary", summary="개별 문서 요약 조회", response_model=DocumentSummaryResponse)
+@router.get(
+    "/{document_id}/summary",
+    summary="개별 문서 요약 조회",
+    response_model=DocumentSummaryResponse,
+)
 async def get_document_summary(
     document_id: UUID,
     current_user: User = Depends(get_current_user),
-    document_service: DocumentService = Depends(get_document_service)
+    document_service: DocumentService = Depends(get_document_service),
 ):
     """
     개별 문서 요약 조회
@@ -134,6 +142,5 @@ async def get_document_summary(
         entities=summary.entities,
         model_version=summary.model_version,
         created_at=summary.created_at,
-        updated_at=summary.updated_at
+        updated_at=summary.updated_at,
     )
-

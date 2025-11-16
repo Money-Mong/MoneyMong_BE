@@ -3,12 +3,14 @@
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
+
 # HuggingFace embedding model (Ko/En/Ja 용)
 embedding_model = HuggingFaceEmbeddings(
     model_name="sangmini/msmarco-cotmae-MiniLM-L12_en-ko-ja",
     model_kwargs={"device": "cpu"},  # CPU 사용, GPU 있으면 "cuda"
     encode_kwargs={"normalize_embeddings": True},
 )
+
 
 def get_query_embedding(text: str):
     """

@@ -3,8 +3,9 @@ API 스키마
 """
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID
+
 from pydantic import BaseModel, field_validator
 
 
@@ -12,8 +13,10 @@ from pydantic import BaseModel, field_validator
 # Message Schemas
 # ===================================
 
+
 class TokenUsage(BaseModel):
     """토큰 사용량"""
+
     prompt: int
     completion: int
     total: int
@@ -21,6 +24,7 @@ class TokenUsage(BaseModel):
 
 class MessageBase(BaseModel):
     """메시지 기본 정보"""
+
     id: UUID
     conversation_id: UUID
     role: str  # 'user' | 'assistant' | 'system'
@@ -36,7 +40,7 @@ class MessageBase(BaseModel):
     class Config:
         from_attributes = True
 
-    @field_validator('token_usage', mode='before')
+    @field_validator("token_usage", mode="before")
     @classmethod
     def empty_dict_to_none(cls, v):
         """
@@ -52,8 +56,10 @@ class MessageBase(BaseModel):
 # Conversation Schemas
 # ===================================
 
+
 class ConversationBase(BaseModel):
     """대화 기본 정보"""
+
     id: str
     user_id: str
     title: Optional[str] = None
@@ -69,18 +75,21 @@ class ConversationBase(BaseModel):
 
 class PrimaryDocumentInfo(BaseModel):
     """대화 목록용 간소화된 문서 정보"""
+
     id: str
     title: str
 
 
 class ConversationListItem(ConversationBase):
     """대화 목록 아이템 (최적화)"""
+
     primary_document: Optional[PrimaryDocumentInfo] = None
     # MVP: last_message, message_count는 추후 추가 가능
 
 
 class ConversationWithMessages(ConversationBase):
     """메시지 포함 대화"""
+
     messages: List[MessageBase]
 
 
@@ -88,8 +97,10 @@ class ConversationWithMessages(ConversationBase):
 # API Request Schemas
 # ===================================
 
+
 class CreateConversationRequest(BaseModel):
     """새 대화 생성 요청"""
+
     session_type: str  # 'general' | 'report_based'
     primary_document_id: Optional[str] = None
     title: Optional[str] = None
@@ -97,6 +108,7 @@ class CreateConversationRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     """메시지 전송 요청"""
+
     content: str
 
 
@@ -104,23 +116,28 @@ class SendMessageRequest(BaseModel):
 # API Response Schemas
 # ===================================
 
+
 class ConversationListResponse(BaseModel):
     """대화 목록 응답 (페이지네이션)"""
+
     total: int
     items: List[ConversationListItem]
 
 
 class ConversationDetailResponse(ConversationBase):
     """대화 상세 응답"""
+
     primary_document: Optional[PrimaryDocumentInfo] = None
 
 
 class MessageListResponse(BaseModel):
     """메시지 목록 응답 (페이지네이션)"""
+
     total: int
     items: List[MessageBase]
 
 
 class MessageCreateResponse(MessageBase):
     """메시지 생성 응답"""
+
     pass

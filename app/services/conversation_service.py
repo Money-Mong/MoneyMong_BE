@@ -3,14 +3,16 @@ Conversation Service Layer
 """
 
 import logging
-from uuid import UUID
-from typing import List, Optional
 from datetime import datetime
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from typing import List, Optional
+from uuid import UUID
 
-from app.services.rag_service import RAGService
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
+
 from app.models.conversation import Conversation, Message
+from app.services.rag_service import RAGService
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +25,7 @@ class ConversationService:
         self.rag_service = RAGService(db)
 
     def get_conversations(
-        self,
-        user_id: UUID,
-        skip: int = 0,
-        limit: int = 20
+        self, user_id: UUID, skip: int = 0, limit: int = 20
     ) -> List[Conversation]:
         """
         사용자의 대화 목록 조회
@@ -49,7 +48,9 @@ class ConversationService:
                 .all()
             )
 
-            logger.info(f"Retrieved {len(conversations)} conversations for user {user_id}")
+            logger.info(
+                f"Retrieved {len(conversations)} conversations for user {user_id}"
+            )
             return conversations
 
         except Exception as e:
@@ -57,9 +58,7 @@ class ConversationService:
             raise
 
     def get_conversation_by_id(
-        self,
-        conversation_id: UUID,
-        user_id: UUID
+        self, conversation_id: UUID, user_id: UUID
     ) -> Optional[Conversation]:
         """
         개별 대화 조회
@@ -75,16 +74,19 @@ class ConversationService:
             conversation = (
                 self.db.query(Conversation)
                 .filter(
-                    Conversation.id == conversation_id,
-                    Conversation.user_id == user_id
+                    Conversation.id == conversation_id, Conversation.user_id == user_id
                 )
                 .first()
             )
 
             if conversation:
-                logger.info(f"Retrieved conversation {conversation_id} for user {user_id}")
+                logger.info(
+                    f"Retrieved conversation {conversation_id} for user {user_id}"
+                )
             else:
-                logger.warning(f"Conversation {conversation_id} not found for user {user_id}")
+                logger.warning(
+                    f"Conversation {conversation_id} not found for user {user_id}"
+                )
 
             return conversation
 
@@ -97,7 +99,7 @@ class ConversationService:
         user_id: UUID,
         session_type: str,
         primary_document_id: Optional[UUID] = None,
-        title: Optional[str] = None
+        title: Optional[str] = None,
     ) -> Conversation:
         """
         새로운 대화 생성
@@ -116,7 +118,7 @@ class ConversationService:
                 user_id=user_id,
                 session_type=session_type,
                 primary_document_id=primary_document_id,
-                title=title or "새 대화"
+                title=title or "새 대화",
             )
 
             self.db.add(conversation)
@@ -132,11 +134,7 @@ class ConversationService:
             raise
 
     def get_conversation_messages(
-        self,
-        conversation_id: UUID,
-        user_id: UUID,
-        skip: int = 0,
-        limit: int = 50
+        self, conversation_id: UUID, user_id: UUID, skip: int = 0, limit: int = 50
     ) -> List[Message]:
         """
         대화의 메시지 목록 조회
@@ -166,19 +164,19 @@ class ConversationService:
                 .all()
             )
 
-            logger.info(f"Retrieved {len(messages)} messages for conversation {conversation_id}")
+            logger.info(
+                f"Retrieved {len(messages)} messages for conversation {conversation_id}"
+            )
             return messages
 
         except Exception as e:
-            logger.error(f"Error retrieving messages for conversation {conversation_id}: {str(e)}")
+            logger.error(
+                f"Error retrieving messages for conversation {conversation_id}: {str(e)}"
+            )
             raise
 
     def add_message(
-        self,
-        conversation_id: UUID,
-        user_id: UUID,
-        role: str,
-        content: str
+        self, conversation_id: UUID, user_id: UUID, role: str, content: str
     ) -> Optional[Message]:
         """
         대화에 메시지 추가
@@ -196,14 +194,14 @@ class ConversationService:
             # 대화 소유권 확인
             conversation = self.get_conversation_by_id(conversation_id, user_id)
             if not conversation:
-                logger.warning(f"Cannot add message - conversation {conversation_id} not found")
+                logger.warning(
+                    f"Cannot add message - conversation {conversation_id} not found"
+                )
                 return None
 
             # 메시지 생성
             message = Message(
-                conversation_id=conversation_id,
-                role=role,
-                content=content
+                conversation_id=conversation_id, role=role, content=content
             )
 
             self.db.add(message)
@@ -219,7 +217,9 @@ class ConversationService:
 
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Error adding message to conversation {conversation_id}: {str(e)}")
+            logger.error(
+                f"Error adding message to conversation {conversation_id}: {str(e)}"
+            )
             raise
 
     def count_user_conversations(self, user_id: UUID) -> int:
@@ -269,18 +269,17 @@ class ConversationService:
             return count
 
         except Exception as e:
-            logger.error(f"Error counting messages for conversation {conversation_id}: {str(e)}")
+            logger.error(
+                f"Error counting messages for conversation {conversation_id}: {str(e)}"
+            )
             raise
 
     async def process_user_message(
-        self,
-        conversation_id: UUID,
-        user_id: UUID,
-        content: str
+        self, conversation_id: UUID, user_id: UUID, content: str
     ) -> Message:
         """
         비즈니스 로직: 메시지 처리 및 AI 응답 생성
-        
+
         Service 책임:
         - 대화 소유권 확인
         - 메시지 저장
@@ -292,32 +291,32 @@ class ConversationService:
             conversation = self.get_conversation_by_id(conversation_id, user_id)
             if not conversation:
                 raise ValueError("Conversation not found")
-            
+
             # 2. 사용자 메시지 저장
             user_message = self._save_user_message(conversation_id, content)
-            
+
             # 3. 히스토리 조회
             history = self._get_message_history(conversation_id, limit=10)
-            
+
             # 4. RAG 실행 (RAG Service에 위임)
             rag_result = await self.rag_service.generate_conversation_response(
                 question=content,
                 document_id=conversation.primary_document_id,
-                conversation_history=history
+                conversation_history=history,
             )
-            
+
             # 5. AI 메시지 저장
             ai_message = self._save_ai_message(conversation_id, rag_result)
-            
+
             # 6. 대화 시간 갱신
             self._update_conversation_timestamp(conversation)
-            
+
             # 7. 커밋
             self.db.commit()
             self.db.refresh(ai_message)
-            
+
             return ai_message
-            
+
         except Exception as e:
             self.db.rollback()
             logger.error(f"Error: {str(e)}")
@@ -341,7 +340,7 @@ class ConversationService:
             reference_context=rag_result.get("reference_context", {}),
             model_version=rag_result.get("model_version"),
             token_usage=rag_result.get("token_usage", {}),
-            latency_ms=rag_result.get("latency_ms")
+            latency_ms=rag_result.get("latency_ms"),
         )
         self.db.add(msg)
         self.db.flush()
