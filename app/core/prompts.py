@@ -1,11 +1,14 @@
 from enum import Enum
 from typing import Optional
 
+
 class UserLevel(str, Enum):
     """사용자 금융 지식 레벨"""
+
     BEGINNER = "beginner"
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
+
 
 # ===================================
 # 사용자 레벨별 가이드 (상수)
@@ -35,7 +38,7 @@ USER_LEVEL_GUIDES = {
 - 불필요한 배경 설명을 생략합니다.
 - 전문 용어를 적극적으로 사용하며, 답변은 간결하면서도 정보 밀도가 높아야 합니다.
 - '데이터'나 '수치'의 상세 근거를 묻는 질문을 생성합니다.
-"""
+""",
 }
 
 # ===================================
@@ -141,31 +144,27 @@ FOLLOWUP_QUESTIONS_PROMPT = """You are a "Learning Coach" whose role is to stimu
 # 헬퍼 함수
 # ===================================
 
+
 def get_summary_prompt(report_content: str) -> str:
     """문서 요약 프롬프트 생성"""
     return SUMMARY_PROMPT.format(report_content=report_content)
 
 
 def get_rag_response_prompt(
-    user_level: UserLevel,
-    retrieved_context: str,
-    user_question: str
+    user_level: UserLevel, retrieved_context: str, user_question: str
 ) -> str:
     """RAG 응답 프롬프트 생성"""
     user_level_guide = USER_LEVEL_GUIDES[user_level]
     return RAG_RESPONSE_PROMPT.format(
         user_level_guide=user_level_guide,
         retrieved_context=retrieved_context,
-        user_question=user_question
+        user_question=user_question,
     )
 
-def get_followup_questions_prompt(
-    user_level: UserLevel,
-    reference_text: str
-) -> str:
+
+def get_followup_questions_prompt(user_level: UserLevel, reference_text: str) -> str:
     """후속 질문 생성 프롬프트"""
     user_level_guide = USER_LEVEL_GUIDES[user_level]
     return FOLLOWUP_QUESTIONS_PROMPT.format(
-        user_level_guide=user_level_guide,
-        reference_text=reference_text
+        user_level_guide=user_level_guide, reference_text=reference_text
     )

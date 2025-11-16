@@ -3,12 +3,14 @@ Document Service Layer
 """
 
 import logging
-from uuid import UUID
 from typing import List, Optional
-from sqlalchemy.orm import Session, joinedload
+from uuid import UUID
+
 from sqlalchemy import desc
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.document import Document, DocumentSummary
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +21,7 @@ class DocumentService:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_documents(
-        self,
-        skip: int = 0,
-        limit: int = 20
-    ) -> List[Document]:
+    def get_documents(self, skip: int = 0, limit: int = 20) -> List[Document]:
         """
         전체 문서 목록 조회 (모든 사용자 공통)
 
@@ -38,7 +36,7 @@ class DocumentService:
             documents = (
                 self.db.query(Document)
                 .options(joinedload(Document.summary))  # DocumentSummary 조인
-                .filter(Document.processing_status == 'completed')
+                .filter(Document.processing_status == "completed")
                 .order_by(desc(Document.created_at))
                 .offset(skip)
                 .limit(limit)
@@ -52,10 +50,7 @@ class DocumentService:
             logger.error(f"Error retrieving documents: {str(e)}")
             raise
 
-    def get_document_by_id(
-        self,
-        document_id: UUID
-    ) -> Optional[Document]:
+    def get_document_by_id(self, document_id: UUID) -> Optional[Document]:
         """
         개별 문서 조회
 
@@ -68,7 +63,10 @@ class DocumentService:
         try:
             document = (
                 self.db.query(Document)
-                .filter(Document.id == document_id, Document.processing_status == 'completed')
+                .filter(
+                    Document.id == document_id,
+                    Document.processing_status == "completed",
+                )
                 .first()
             )
 
@@ -83,10 +81,7 @@ class DocumentService:
             logger.error(f"Error retrieving document {document_id}: {str(e)}")
             raise
 
-    def get_document_summary(
-        self,
-        document_id: UUID
-    ) -> Optional[DocumentSummary]:
+    def get_document_summary(self, document_id: UUID) -> Optional[DocumentSummary]:
         """
         문서 요약 조회
 
@@ -118,7 +113,9 @@ class DocumentService:
             return summary
 
         except Exception as e:
-            logger.error(f"Error retrieving summary for document {document_id}: {str(e)}")
+            logger.error(
+                f"Error retrieving summary for document {document_id}: {str(e)}"
+            )
             raise
 
     def count_documents(self) -> int:

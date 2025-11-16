@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 """
 Naver Finance 기업리포트 - 경량 테스트 버전
@@ -12,15 +11,17 @@ Naver Finance 기업리포트 - 경량 테스트 버전
 - 문서 단위 트랜잭션, DB 중복 확인
 
 DB 연결에서 기입 필요
-- DB_CONFIG 
+- DB_CONFIG
 
 """
+
+import datetime as dt
 import os
 import re
 import time
-import datetime as dt
 from io import BytesIO
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import parse_qs, urljoin, urlparse
+
 import psycopg2
 import requests
 from bs4 import BeautifulSoup
@@ -28,16 +29,21 @@ from bs4 import BeautifulSoup
 from app.config import get_settings
 from app.services.s3_client import get_s3_client
 
+
 # ------------------- 설정 -------------------
-MODE = "DAILY" # 'INIT' or 'DAILY'
+MODE = "DAILY"  # 'INIT' or 'DAILY'
 BASE = "https://finance.naver.com"
-LIST_TPL = "https://finance.naver.com/research/company_list.naver?page={page}"  # 풀페이지
-OUT_DIR = os.path.join("raw-documents", "naver_corp_reports")  # S3 raw-documents 하위 폴더
+LIST_TPL = (
+    "https://finance.naver.com/research/company_list.naver?page={page}"  # 풀페이지
+)
+OUT_DIR = os.path.join(
+    "raw-documents", "naver_corp_reports"
+)  # S3 raw-documents 하위 폴더
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
 REFERER = "https://finance.naver.com/research/company_list.naver"
 TIMEOUT = 30
-SLEEP = 0.6 
-DEBUG_ONE = False # True : 첫 문서에서 종료
+SLEEP = 0.6
+DEBUG_ONE = False  # True : 첫 문서에서 종료
 
 # 하루치(오늘 - 1일 이후)
 KST = dt.timezone(dt.timedelta(hours=9))
@@ -52,6 +58,7 @@ DB_CONFIG = {
     "user": settings.POSTGRES_USER,
     "password": settings.POSTGRES_PASSWORD,
 }
+
 
 def get_connection():
     return psycopg2.connect(**DB_CONFIG)
@@ -69,7 +76,9 @@ def resolve_crawl_window(run_mode: str, today: dt.date):
     raise ValueError(f"Unsupported mode: {run_mode}")
 
 
-def build_crawl_result(run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date):
+def build_crawl_result(
+    run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date
+):
     return {
         "mode": run_mode,
         "today": today,
@@ -91,14 +100,17 @@ def parse_date(text: str, today):
             pass
     return None
 
+
 def norm_filename(s: str, maxlen: int = 150):
     s = re.sub(r"\s+", " ", s).strip()
     s = re.sub(r'[\\/:"*?<>|]+', "_", s)
     return (s[:maxlen].rstrip() if len(s) > maxlen else s) or "report"
 
+
 ## 날짜
 # def month_dir(d: dt.date):
 #     return os.path.join(OUT_DIR, f"{d:%Y-%m}")
+
 
 def date_hierarchy_dir(d: dt.date):
     """
@@ -107,6 +119,7 @@ def date_hierarchy_dir(d: dt.date):
     """
     month_dirname = d.strftime("%b")  # Jan, Feb, ...
     return os.path.join(OUT_DIR, f"{d:%Y}", month_dirname, f"{d:%d}")
+
 
 # ------------------- 메인 로직 -------------------
 def crawl_multi_pages(mode: str | None = None):
@@ -122,7 +135,7 @@ def crawl_multi_pages(mode: str | None = None):
     last_seen_date = None
 
     while True:
-        list_url = LIST_TPL.format(page = page)
+        list_url = LIST_TPL.format(page=page)
         print(f"[INFO] 목록 요청: {list_url}")
 
         r = sess.get(list_url, timeout=TIMEOUT)
@@ -131,7 +144,7 @@ def crawl_multi_pages(mode: str | None = None):
             break
 
         soup = BeautifulSoup(r.text, "html.parser")
-        box = soup.select_one('div.box_type_m') or soup
+        box = soup.select_one("div.box_type_m") or soup
         rows = box.select("tr")
 
         if not rows:
@@ -148,8 +161,14 @@ def crawl_multi_pages(mode: str | None = None):
 
             # 날짜
             date_td = tr.select_one("td.date")
-            date_text = date_td.get_text(strip=True) if date_td else tds[-1].get_text(strip=True)
-            pub_date = parse_date(date_text, today)  # ← 2자리 연도/월.일까지 처리하는 parse_date로
+            date_text = (
+                date_td.get_text(strip=True)
+                if date_td
+                else tds[-1].get_text(strip=True)
+            )
+            pub_date = parse_date(
+                date_text, today
+            )  # ← 2자리 연도/월.일까지 처리하는 parse_date로
             if not pub_date:
                 continue
             last_seen_date = pub_date
@@ -163,15 +182,17 @@ def crawl_multi_pages(mode: str | None = None):
             report_post = tr.select_one('a[href*="company_read"]')
             if not report_post or not report_post.has_attr("href"):
                 continue
-            
-            report_url = urljoin(r.url, report_post["href"].strip()) # detail_url 예: ...company_read.naver?nid=87906&page=1
+
+            report_url = urljoin(
+                r.url, report_post["href"].strip()
+            )  # detail_url 예: ...company_read.naver?nid=87906&page=1
             parsed = urlparse(report_url)
             qs = parse_qs(parsed.query)
             nid = qs.get("nid", [None])[0]
             if not nid:
                 print(f"[WARNING] nid 없음: {report_url}")
                 continue
-            title = report_post.get_text(strip=True) # 리포트 제목
+            title = report_post.get_text(strip=True)  # 리포트 제목
 
             # 개별 리포트 페이지 요청
             try:
@@ -201,8 +222,8 @@ def crawl_multi_pages(mode: str | None = None):
             # DB 중복 확인
             with get_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT 1 FROM documents WHERE file_id=%s",(nid,))
-                    exists=cur.fetchone()
+                    cur.execute("SELECT 1 FROM documents WHERE file_id=%s", (nid,))
+                    exists = cur.fetchone()
                     if exists:
                         print(f"[SKIP] 이미 DB에 존재: {nid}")
                         continue
@@ -222,19 +243,25 @@ def crawl_multi_pages(mode: str | None = None):
 
             # (3) 실제 최종 후보 결정 (.pdf 링크 우선)
             for candidate in [pdf_link, text_link]:
-                if candidate and candidate.has_attr("href") and ".pdf" in candidate["href"].lower():
+                if (
+                    candidate
+                    and candidate.has_attr("href")
+                    and ".pdf" in candidate["href"].lower()
+                ):
                     report_pdf = candidate
                     break
 
             if not report_pdf:
-                print(f"[INFO] PDF 없음: \n 제목: {title} \n 증권사: {broker} \n {report_url}")
+                print(
+                    f"[INFO] PDF 없음: \n 제목: {title} \n 증권사: {broker} \n {report_url}"
+                )
                 continue
 
             pdf_url = urljoin(report_url, report_pdf["href"].strip())
 
             # pdf 링크 뒤의 숫자 id 추출
-            m = re.search(r'(\d+)\.pdf', pdf_url)
-            pdf_id = m.group(1) if m else "noid" # pdf 링크 뒤의 숫자
+            m = re.search(r"(\d+)\.pdf", pdf_url)
+            pdf_id = m.group(1) if m else "noid"  # pdf 링크 뒤의 숫자
 
             # if os.path.exists(out_path):
             #     print(f"[SKIP] 이미 존재: {out_path}")
@@ -281,18 +308,19 @@ def crawl_multi_pages(mode: str | None = None):
                          )
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
-                        ("pdf",
-                         report_url,
-                         nid,
-                         pdf_url,
-                         nid,
-                         title,
-                         broker,
-                         pub_date,
-                         s3_uri,
-                         file_size,
-                         None
-                        )
+                        (
+                            "pdf",
+                            report_url,
+                            nid,
+                            pdf_url,
+                            nid,
+                            title,
+                            broker,
+                            pub_date,
+                            s3_uri,
+                            file_size,
+                            None,
+                        ),
                     )
                 conn.commit()
             print(f"DB 저장 완료 -> {nid}")
@@ -301,8 +329,10 @@ def crawl_multi_pages(mode: str | None = None):
             # 디버그용: 하나만 가져오고 종료
             if DEBUG_ONE:
                 print("[INFO] DEBUG_ONE=True → 첫 문서까지만 처리 후 종료")
-                return build_crawl_result(run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date)
-            
+                return build_crawl_result(
+                    run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date
+                )
+
             time.sleep(SLEEP)
 
         # 이 페이지에 대상이 하나도 없었다면(모두 cutoff 이전),
@@ -320,12 +350,15 @@ def crawl_multi_pages(mode: str | None = None):
         f"[DONE] 모드={run_mode} / 기준: {cutoff_date}~{today} / "
         f"PDF 저장={pdf_saved}건 / DB 저장={db_saved}건"
     )
-    return build_crawl_result(run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date)
+    return build_crawl_result(
+        run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date
+    )
+
 
 # if __name__ == "__main__":
 #     print(f'[INFO] 수집 기준: {CUTOFF_DATE} ~ {TODAY}')
 #     crawl_multi_pages()
 
 
-    # print(f"[INFO] 테스트 모드: 1페이지, 하루치만 수집 (기준: {CUTOFF_DATE} ~ {TODAY})")
-    # crawl_one_page_one_day()
+# print(f"[INFO] 테스트 모드: 1페이지, 하루치만 수집 (기준: {CUTOFF_DATE} ~ {TODAY})")
+# crawl_one_page_one_day()

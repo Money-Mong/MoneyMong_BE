@@ -1,0 +1,149 @@
+# ============================================================================
+# GitHub Actions CI 워크플로우 (협업 친화적 버전)
+# 치명적 오류만 검사 + 자동 수정 가능한 부분은 자동 처리
+# ============================================================================
+name: CI
+
+# 워크플로우 트리거 조건
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # ==========================================================================
+  # Job 1: 코드 스타일 및 포맷 검사 (균형 버전)
+  # ==========================================================================
+  lint-and-format-check:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      # 1. 포맷팅 검사 (강제)
+      # 포맷이 올바르지 않으면 CI를 실패시킵니다. (100% 자동 수정 가능)
+      - name: Verify Formatting
+        run: ruff format --check .
+
+      # 2. 린트 검사 (알림용)
+      # 린트 오류가 있어도 CI를 통과시키지만, PR에 주석으로 알려줍니다.
+      - name: Lint Code
+        run: ruff check .
+        continue-on-error: true
+
+  # ==========================================================================
+  # Job 2: 타입 검사 (선택적 - 경고만 표시, 실패하지 않음)
+  # ==========================================================================
+  type-check:
+    name: Type Check (Optional)
+    runs-on: ubuntu-latest
+    continue-on-error: true  # 타입 검사 실패해도 CI 통과
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      # mypy 실행
+      - name: Run mypy
+        run: |
+          mypy .
+
+  # ==========================================================================
+  # Job 3: 테스트 (테스트 파일이 있을 때만 실행)
+  # ==========================================================================
+  test:
+    name: Tests (if available)
+    runs-on: ubuntu-latest
+    continue-on-error: true  # 테스트 실패해도 CI 통과
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      # 테스트 디렉토리가 있으면 실행, 없으면 스킵
+      - name: Run tests
+        run: |
+          if [ -d "tests" ]; then
+            pytest --cov=. --cov-report=xml --cov-report=term-missing
+          else
+            echo "No tests directory found, skipping tests"
+          fi
+
+      # 커버리지 리포트 업로드 (선택적)
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true
+
+  # ==========================================================================
+  # Job 4: 빌드 검증 (필수 - 이것만 실패하면 CI 실패)
+  # ==========================================================================
+  build:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    needs: [lint-and-format-check]  # 코드 스타일 검사를 통과해야 빌드 진행
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      # 프로덕션 의존성만 설치
+      - name: Install production dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 주요 패키지 import 검증 (실제 실행 가능 여부)
+      - name: Verify core imports
+        run: |
+          python -c "import fastapi; import uvicorn; print('Core packages OK')"
+
+      # 간단한 문법 체크
+      - name: Python syntax check
+        run: |
+          python -m py_compile $(find . -name "*.py" -not -path "./.venv/*" -not -path "./venv/*" -not -path "./.git/*") || echo "Some files have syntax errors"

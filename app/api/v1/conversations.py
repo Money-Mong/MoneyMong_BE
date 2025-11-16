@@ -4,24 +4,26 @@ Conversation API Endpoints
 
 from typing import List
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.v1.auth import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.api.v1.auth import get_current_user
-from app.services.conversation_service import ConversationService
 from app.schemas import (
-    ConversationListResponse,
-    ConversationListItem,
     ConversationDetailResponse,
-    PrimaryDocumentInfo,
+    ConversationListItem,
+    ConversationListResponse,
     CreateConversationRequest,
-    MessageListResponse,
     MessageBase,
-    SendMessageRequest,
     MessageCreateResponse,
+    MessageListResponse,
+    PrimaryDocumentInfo,
+    SendMessageRequest,
 )
+from app.services.conversation_service import ConversationService
+
 
 router = APIRouter()
 
@@ -36,7 +38,7 @@ async def get_conversations(
     skip: int = 0,
     limit: int = 20,
     current_user: User = Depends(get_current_user),
-    conversation_service: ConversationService = Depends(get_conversation_service)
+    conversation_service: ConversationService = Depends(get_conversation_service),
 ):
     """
     사용자의 대화 목록 조회
@@ -57,11 +59,13 @@ async def get_conversations(
             user_id=str(conv.user_id),
             title=conv.title,
             session_type=conv.session_type,
-            primary_document_id=str(conv.primary_document_id) if conv.primary_document_id else None,
+            primary_document_id=str(conv.primary_document_id)
+            if conv.primary_document_id
+            else None,
             is_active=conv.is_active,
             created_at=conv.created_at,
             updated_at=conv.updated_at,
-            primary_document=None # 일단 보류, 아직은 필요하지 않음
+            primary_document=None,  # 일단 보류, 아직은 필요하지 않음
         )
         for conv in conversations
     ]
@@ -69,11 +73,15 @@ async def get_conversations(
     return ConversationListResponse(total=total, items=items)
 
 
-@router.get("/{conversation_id}", summary="개별 대화 조회", response_model=ConversationDetailResponse)
+@router.get(
+    "/{conversation_id}",
+    summary="개별 대화 조회",
+    response_model=ConversationDetailResponse,
+)
 async def get_conversation(
     conversation_id: UUID,
     current_user: User = Depends(get_current_user),
-    conversation_service: ConversationService = Depends(get_conversation_service)
+    conversation_service: ConversationService = Depends(get_conversation_service),
 ):
     """
     개별 대화 조회
@@ -84,7 +92,9 @@ async def get_conversation(
     Returns:
     - ConversationDetailResponse: 대화 상세 정보
     """
-    conversation = conversation_service.get_conversation_by_id(conversation_id, current_user.id)
+    conversation = conversation_service.get_conversation_by_id(
+        conversation_id, current_user.id
+    )
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -93,22 +103,31 @@ async def get_conversation(
         user_id=str(conversation.user_id),
         title=conversation.title,
         session_type=conversation.session_type,
-        primary_document_id=str(conversation.primary_document_id) if conversation.primary_document_id else None,
+        primary_document_id=str(conversation.primary_document_id)
+        if conversation.primary_document_id
+        else None,
         is_active=conversation.is_active,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         primary_document=PrimaryDocumentInfo(
             id=str(conversation.primary_document.id),
-            title=conversation.primary_document.title
-        ) if conversation.primary_document else None
+            title=conversation.primary_document.title,
+        )
+        if conversation.primary_document
+        else None,
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="신규 대화 생성", response_model=ConversationDetailResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="신규 대화 생성",
+    response_model=ConversationDetailResponse,
+)
 async def create_conversation(
     request: CreateConversationRequest,
     current_user: User = Depends(get_current_user),
-    conversation_service: ConversationService = Depends(get_conversation_service)
+    conversation_service: ConversationService = Depends(get_conversation_service),
 ):
     """
     신규 대화 생성
@@ -122,18 +141,20 @@ async def create_conversation(
     - ConversationDetailResponse: 생성된 대화 정보
     """
     # session_type='report_based'일 때 primary_document_id 필수 검증
-    if request.session_type == 'report_based' and not request.primary_document_id:
+    if request.session_type == "report_based" and not request.primary_document_id:
         raise HTTPException(
             status_code=400,
-            detail="primary_document_id is required for report_based sessions"
+            detail="primary_document_id is required for report_based sessions",
         )
 
     # 대화 생성
     conversation = conversation_service.create_conversation(
         user_id=current_user.id,
         session_type=request.session_type,
-        primary_document_id=UUID(request.primary_document_id) if request.primary_document_id else None,
-        title=request.title
+        primary_document_id=UUID(request.primary_document_id)
+        if request.primary_document_id
+        else None,
+        title=request.title,
     )
 
     return ConversationDetailResponse(
@@ -141,24 +162,32 @@ async def create_conversation(
         user_id=str(conversation.user_id),
         title=conversation.title,
         session_type=conversation.session_type,
-        primary_document_id=str(conversation.primary_document_id) if conversation.primary_document_id else None,
+        primary_document_id=str(conversation.primary_document_id)
+        if conversation.primary_document_id
+        else None,
         is_active=conversation.is_active,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         primary_document=PrimaryDocumentInfo(
             id=str(conversation.primary_document.id),
-            title=conversation.primary_document.title
-        ) if conversation.primary_document else None
+            title=conversation.primary_document.title,
+        )
+        if conversation.primary_document
+        else None,
     )
 
 
-@router.get("/{conversation_id}/messages", summary="개별 대화 메시지 목록 조회", response_model=MessageListResponse)
+@router.get(
+    "/{conversation_id}/messages",
+    summary="개별 대화 메시지 목록 조회",
+    response_model=MessageListResponse,
+)
 async def get_conversation_messages(
     conversation_id: UUID,
     skip: int = 0,
     limit: int = 20,
     current_user: User = Depends(get_current_user),
-    conversation_service: ConversationService = Depends(get_conversation_service)
+    conversation_service: ConversationService = Depends(get_conversation_service),
 ):
     """
     개별 대화 메시지 목록 조회
@@ -172,15 +201,11 @@ async def get_conversation_messages(
     - MessageListResponse: 메시지 목록 (total, items)
     """
     messages = conversation_service.get_conversation_messages(
-        conversation_id=conversation_id,
-        user_id=current_user.id,
-        skip=skip,
-        limit=limit
+        conversation_id=conversation_id, user_id=current_user.id, skip=skip, limit=limit
     )
-    
+
     total = conversation_service.count_conversation_messages(
-        conversation_id=conversation_id, 
-        user_id=current_user.id
+        conversation_id=conversation_id, user_id=current_user.id
     )
 
     items = [
@@ -189,9 +214,11 @@ async def get_conversation_messages(
             conversation_id=str(msg.conversation_id),
             role=msg.role,
             content=msg.content,
-            cited_chunks=[str(chunk_id) for chunk_id in msg.cited_chunks] if msg.cited_chunks else [],
+            cited_chunks=[str(chunk_id) for chunk_id in msg.cited_chunks]
+            if msg.cited_chunks
+            else [],
             follow_up_questions=msg.follow_up_questions,
-            created_at=msg.created_at
+            created_at=msg.created_at,
         )
         for msg in messages
     ]
@@ -199,12 +226,17 @@ async def get_conversation_messages(
     return MessageListResponse(total=total, items=items)
 
 
-@router.post("/{conversation_id}/messages", status_code=status.HTTP_201_CREATED, summary="메시지 전송 및 AI 응답", response_model=MessageCreateResponse)
+@router.post(
+    "/{conversation_id}/messages",
+    status_code=status.HTTP_201_CREATED,
+    summary="메시지 전송 및 AI 응답",
+    response_model=MessageCreateResponse,
+)
 async def send_message(
     conversation_id: UUID,
     request: SendMessageRequest,
     current_user: User = Depends(get_current_user),
-    conversation_service: ConversationService = Depends(get_conversation_service)
+    conversation_service: ConversationService = Depends(get_conversation_service),
 ):
     """
     사용자 메시지 전송 + AI 응답 생성
@@ -223,7 +255,7 @@ async def send_message(
         ai_message = await conversation_service.process_user_message(
             conversation_id=conversation_id,
             user_id=current_user.id,
-            content=request.content
+            content=request.content,
         )
         return ai_message
     except ValueError as e:

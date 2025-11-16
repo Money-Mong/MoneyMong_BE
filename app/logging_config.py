@@ -6,7 +6,9 @@
 
 import logging
 import sys
+
 from app.config import get_settings
+
 
 settings = get_settings()
 
@@ -27,7 +29,7 @@ def setup_logging():
         handlers=[
             # 콘솔 출력
             logging.StreamHandler(sys.stdout),
-        ]
+        ],
     )
 
     # 민감한 정보를 포함하는 라이브러리 로그 레벨 조정

@@ -2,11 +2,13 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.schemas.rag import AskRequest, AskResponse
 from app.services.rag_service import run_rag_pipeline
-from app.database import get_db
+
 
 router = APIRouter(tags=["RAG"])
+
 
 @router.post("/ask", response_model=AskResponse)
 async def ask_question(

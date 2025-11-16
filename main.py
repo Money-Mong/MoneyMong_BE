@@ -5,9 +5,10 @@ MoneyMong Backend - FastAPI Application Entry Point
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import get_settings
 from app.api.v1 import api_router
+from app.config import get_settings
 from app.logging_config import setup_logging
+
 
 # 로깅 설정 초기화
 setup_logging()
@@ -21,7 +22,7 @@ app = FastAPI(
     debug=settings.DEBUG,
     swagger_ui_parameters={
         "persistAuthorization": True  # 인증 정보 유지
-    }
+    },
 )
 
 # Configure CORS
@@ -43,7 +44,7 @@ async def root():
     return {
         "message": "MoneyMong API",
         "version": settings.APP_VERSION,
-        "docs": "/docs"
+        "docs": "/docs",
     }
 
 
@@ -55,9 +56,5 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="localhost",
-        port=8000,
-        reload=settings.DEBUG
-    )
+
+    uvicorn.run("main:app", host="localhost", port=8000, reload=settings.DEBUG)
