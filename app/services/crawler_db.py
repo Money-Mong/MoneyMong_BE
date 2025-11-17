@@ -275,7 +275,7 @@ def crawl_multi_pages(mode: str | None = None, start_date=None, end_date=None):
             # PDF 다운로드
             ## 저장 경로 및 파일명 구성
             fname = f"{pub_date:%Y%m%d}_{nid}.pdf"
-            s3_key = f"{OUT_DIR}/{fname}"
+            s3_key = f"{OUT_DIR}/{pub_date:%Y%m%d}/{fname}"
             s3_uri = f"s3://{settings.AWS_S3_BUCKET}/{s3_key}"
 
             try:
