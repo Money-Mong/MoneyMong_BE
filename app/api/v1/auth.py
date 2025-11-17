@@ -12,27 +12,29 @@ FastAPI Docs 테스트:
 - /auth/google/callback에 code 입력하여 JWT 획득
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.auth_service import AuthService
 from app.models.user import User
+from app.services.auth_service import AuthService
+
 
 router = APIRouter()
 
 # Security Scheme 정의 (Swagger UI의 "Authorize" 버튼 활성화)
 security = HTTPBearer(
     scheme_name="Bearer Token",
-    description="JWT Access Token을 입력하세요 (Bearer 접두사 불필요)"
+    description="JWT Access Token을 입력하세요 (Bearer 접두사 불필요)",
 )
 
 
 # ============================================
 # Dependencies
 # ============================================
+
 
 def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
     """
@@ -45,7 +47,7 @@ def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    auth_service: AuthService = Depends(get_auth_service)
+    auth_service: AuthService = Depends(get_auth_service),
 ) -> User:
     """
     JWT 토큰에서 현재 사용자 추출
@@ -60,14 +62,13 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     user = auth_service.get_user_by_id(user_id)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
     return user
@@ -76,6 +77,7 @@ async def get_current_user(
 # ============================================
 # OAuth Endpoints
 # ============================================
+
 
 @router.get("/google/login")
 async def google_login(auth_service: AuthService = Depends(get_auth_service)):
@@ -100,7 +102,7 @@ async def google_login(auth_service: AuthService = Depends(get_auth_service)):
 async def google_auth_callback(
     code: str = Body(..., description="Google OAuth authorization code"),
     redirect_uri: str = Body(None, description="OAuth redirect URI (optional)"),
-    auth_service: AuthService = Depends(get_auth_service)
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     """
     Google OAuth 콜백 엔드포인트
@@ -134,12 +136,12 @@ async def google_auth_callback(
             "access_token": result["access_token"],
             "refresh_token": result.get("refresh_token"),
             "token_type": "bearer",
-            "user": result["user"]
+            "user": result["user"],
         }
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth authentication failed: {str(e)}"
+            detail=f"OAuth authentication failed: {str(e)}",
         )
 
 
@@ -147,10 +149,9 @@ async def google_auth_callback(
 # User Endpoints
 # ============================================
 
+
 @router.get("/me")
-async def get_my_info(
-    current_user: User = Depends(get_current_user)
-):
+async def get_my_info(current_user: User = Depends(get_current_user)):
     """
     현재 인증된 사용자 정보 조회
 
@@ -165,7 +166,7 @@ async def get_my_info(
         "oauth_provider": current_user.oauth_provider,
         "is_active": current_user.is_active,
         "created_at": current_user.created_at,
-        "last_login_at": current_user.last_login_at
+        "last_login_at": current_user.last_login_at,
     }
 
 
@@ -173,10 +174,11 @@ async def get_my_info(
 # Token Management
 # ============================================
 
+
 @router.post("/refresh")
 async def refresh_token(
     refresh_token: str = Body(..., embed=True),
-    auth_service: AuthService = Depends(get_auth_service)
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     """
     Refresh 토큰으로 새로운 Access 토큰 발급
@@ -194,21 +196,13 @@ async def refresh_token(
     """
     try:
         new_access_token = auth_service.refresh_access_token(refresh_token)
-        return {
-            "access_token": new_access_token,
-            "token_type": "bearer"
-        }
+        return {"access_token": new_access_token, "token_type": "bearer"}
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
 
 @router.post("/logout")
-async def logout(
-    current_user: User = Depends(get_current_user)
-):
+async def logout(current_user: User = Depends(get_current_user)):
     """
     로그아웃
 
@@ -218,7 +212,7 @@ async def logout(
     Headers:
     Authorization: Bearer <access_token>
     """
-    # TODO: 프론트 만들고 나서 하기
+    # TODO: 프론트 만들고 나서 하기, 1차적으론 프론트 레벨에서 대응 가능함
     return {"message": "Logout successful"}
 
 
@@ -226,10 +220,11 @@ async def logout(
 # Account Management
 # ============================================
 
+
 @router.delete("/withdraw")
 async def withdraw_account(
     current_user: User = Depends(get_current_user),
-    auth_service: AuthService = Depends(get_auth_service)
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     """
     회원 탈퇴 (계정 비활성화)
@@ -243,20 +238,20 @@ async def withdraw_account(
         auth_service.deactivate_user(str(current_user.id))
         return {"message": "Account deactivated successfully"}
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 # ============================================
 # Test Endpoints (개발용)
 # ============================================
 
+
 @router.post("/test/create-token")
 async def test_create_token(
-    user_id: str = Body(..., embed=True, description="테스트용 사용자 UUID (이메일 아님!)"),
-    auth_service: AuthService = Depends(get_auth_service)
+    user_id: str = Body(
+        ..., embed=True, description="테스트용 사용자 UUID (이메일 아님!)"
+    ),
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     """
     테스트용: user_id로 JWT 토큰 생성
@@ -285,12 +280,13 @@ async def test_create_token(
     """
     # UUID 형식 검증
     from uuid import UUID
+
     try:
         UUID(user_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid user_id format. Must be UUID, not email or other string. Got: '{user_id}'"
+            detail=f"Invalid user_id format. Must be UUID, not email or other string. Got: '{user_id}'",
         )
 
     # 사용자 존재 확인
@@ -298,7 +294,7 @@ async def test_create_token(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User not found with id: {user_id}. Please create user via OAuth first."
+            detail=f"User not found with id: {user_id}. Please create user via OAuth first.",
         )
 
     access_token = auth_service.create_access_token(user_id)
@@ -308,5 +304,5 @@ async def test_create_token(
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "expires_in": 900  # 15분 = 900초
+        "expires_in": 900,  # 15분 = 900초
     }

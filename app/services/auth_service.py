@@ -5,14 +5,16 @@ Google OAuth와 JWT 토큰 관리를 담당
 """
 
 import logging
-from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict
+from typing import Dict, Optional
+
 import httpx
 import jwt
+from sqlalchemy.orm import Session
 
-from app.models.user import User, UserProfile
 from app.config import get_settings
+from app.models.user import User, UserProfile
+
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -43,12 +45,14 @@ class AuthService:
             "response_type": "code",
             "scope": "openid email profile",
             "access_type": "offline",  # Refresh token 획득
-            "prompt": "consent"  # 항상 동의 화면 표시
+            "prompt": "consent",  # 항상 동의 화면 표시
         }
 
         return f"{base_url}?{urlencode(params)}"
 
-    async def google_oauth_callback(self, code: str, redirect_uri: Optional[str] = None) -> Dict:
+    async def google_oauth_callback(
+        self, code: str, redirect_uri: Optional[str] = None
+    ) -> Dict:
         """
         Google OAuth 코드를 사용자 정보로 교환하고 JWT 발급
 
@@ -79,7 +83,7 @@ class AuthService:
                 oauth_id=user_info["id"],
                 email=user_info["email"],
                 name=user_info.get("name", user_info["email"]),
-                profile_image_url=user_info.get("picture")
+                profile_image_url=user_info.get("picture"),
             )
 
             # 4. 마지막 로그인 시간 업데이트
@@ -99,8 +103,8 @@ class AuthService:
                     "email": user.email,
                     "username": user.username,
                     "profile_image_url": user.profile_image_url,
-                    "oauth_provider": user.oauth_provider
-                }
+                    "oauth_provider": user.oauth_provider,
+                },
             }
         except ValueError as e:
             # ValueError는 이미 사용자 친화적 메시지 (Google OAuth 에러)
@@ -111,7 +115,9 @@ class AuthService:
             logger.error(f"Unexpected error in OAuth callback: {str(e)}", exc_info=True)
             raise ValueError("Authentication failed. Please try again later.")
 
-    async def _exchange_code_for_token(self, code: str, redirect_uri: Optional[str]) -> str:
+    async def _exchange_code_for_token(
+        self, code: str, redirect_uri: Optional[str]
+    ) -> str:
         """
         Authorization code를 Google Access Token으로 교환
 
@@ -136,7 +142,7 @@ class AuthService:
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
             "redirect_uri": redirect_uri or settings.GOOGLE_REDIRECT_URI,
-            "grant_type": "authorization_code"
+            "grant_type": "authorization_code",
         }
 
         async with httpx.AsyncClient() as client:
@@ -144,9 +150,13 @@ class AuthService:
 
             if response.status_code != 200:
                 # 상세 에러는 로그에만 기록
-                logger.error(f"Google token exchange failed: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Google token exchange failed: {response.status_code} - {response.text}"
+                )
                 # 클라이언트에는 안전한 메시지만 전달
-                raise ValueError("Failed to authenticate with Google. Please try again.")
+                raise ValueError(
+                    "Failed to authenticate with Google. Please try again."
+                )
 
             token_data = response.json()
             return token_data["access_token"]
@@ -177,7 +187,9 @@ class AuthService:
 
             if response.status_code != 200:
                 # 상세 에러는 로그에만 기록
-                logger.error(f"Google user info fetch failed: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Google user info fetch failed: {response.status_code} - {response.text}"
+                )
                 # 클라이언트에는 안전한 메시지만 전달
                 raise ValueError("Failed to retrieve user information from Google.")
 
@@ -197,14 +209,18 @@ class AuthService:
         Returns:
             JWT access token (유효기간: 15분)
         """
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        )
         payload = {
             "sub": user_id,
             "type": "access",
             "exp": expire,
-            "iat": datetime.now(timezone.utc)
+            "iat": datetime.now(timezone.utc),
         }
-        encoded_jwt = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+        encoded_jwt = jwt.encode(
+            payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+        )
         return encoded_jwt
 
     def create_refresh_token(self, user_id: str) -> str:
@@ -217,14 +233,18 @@ class AuthService:
         Returns:
             JWT refresh token (유효기간: 7일)
         """
-        expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        expire = datetime.now(timezone.utc) + timedelta(
+            days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+        )
         payload = {
             "sub": user_id,
             "type": "refresh",
             "exp": expire,
-            "iat": datetime.now(timezone.utc)
+            "iat": datetime.now(timezone.utc),
         }
-        encoded_jwt = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+        encoded_jwt = jwt.encode(
+            payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+        )
         return encoded_jwt
 
     def verify_access_token(self, token: str) -> Optional[str]:
@@ -239,9 +259,7 @@ class AuthService:
         """
         try:
             payload = jwt.decode(
-                token,
-                settings.JWT_SECRET_KEY,
-                algorithms=[settings.JWT_ALGORITHM]
+                token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
             )
             user_id: str = payload.get("sub")
             token_type: str = payload.get("type")
@@ -272,7 +290,7 @@ class AuthService:
             payload = jwt.decode(
                 refresh_token,
                 settings.JWT_SECRET_KEY,
-                algorithms=[settings.JWT_ALGORITHM]
+                algorithms=[settings.JWT_ALGORITHM],
             )
             user_id: str = payload.get("sub")
             token_type: str = payload.get("type")
@@ -302,7 +320,7 @@ class AuthService:
         oauth_id: str,
         email: str,
         name: str,
-        profile_image_url: Optional[str] = None
+        profile_image_url: Optional[str] = None,
     ) -> User:
         """
         기존 사용자 조회 또는 새 사용자 생성
@@ -320,10 +338,11 @@ class AuthService:
             User 객체
         """
         # 1. OAuth provider + OAuth ID로 기존 사용자 조회
-        user = self.db.query(User).filter(
-            User.oauth_provider == oauth_provider,
-            User.oauth_id == oauth_id
-        ).first()
+        user = (
+            self.db.query(User)
+            .filter(User.oauth_provider == oauth_provider, User.oauth_id == oauth_id)
+            .first()
+        )
 
         if user:
             # 2. 기존 사용자: 정보 업데이트 (이름, 프로필 이미지)
@@ -341,7 +360,7 @@ class AuthService:
             email=email,
             username=name,
             profile_image_url=profile_image_url,
-            is_active=True
+            is_active=True,
         )
         self.db.add(new_user)
         self.db.flush()  # user.id 생성을 위해 flush
@@ -350,7 +369,7 @@ class AuthService:
         new_profile = UserProfile(
             user_id=new_user.id,
             finance_level="beginner",  # 기본값
-            interests=[]  # 빈 배열
+            interests=[],  # 빈 배열
         )
         self.db.add(new_profile)
         self.db.commit()
