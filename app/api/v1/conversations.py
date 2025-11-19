@@ -243,19 +243,23 @@ async def send_message(
 
     Request Body:
     - content: 사용자 질문 (필수)
+    - user_level: 사용자 금융 지식 레벨 (선택, 기본: intermediate)
+      * beginner: 해설 모드 (쉬운 설명)
+      * intermediate: 요약 모드 (핵심 요약)
+      * advanced: 심화 모드 (전문적)
 
     Returns:
     - MessageCreateResponse: 생성된 AI 응답 메시지
 
     **TODO 구현 필요 사항**:
     1. 스트리밍 지원 (SSE)
-    2. session_type 체크로 청크 사용여부 분기
     """
     try:
         ai_message = await conversation_service.process_user_message(
             conversation_id=conversation_id,
             user_id=current_user.id,
             content=request.content,
+            user_level=request.user_level,
         )
 
         # SQLAlchemy 모델을 Pydantic 모델로 수동 변환
