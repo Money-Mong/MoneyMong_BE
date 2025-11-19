@@ -1,12 +1,22 @@
-# app/utils/llm.py
+# app/core/llm.py
 
 import os
+import re
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_upstage import ChatUpstage
 from openai import OpenAI
+
+from app.core.prompts import (
+    UserLevel,
+    get_document_rag_context_response_prompt,
+    get_followup_questions_prompt,
+    get_general_context_conversation_prompt,
+    get_general_conversation_prompt,
+)
 
 
 load_dotenv()
@@ -54,8 +64,9 @@ CONVERSATION_RAG_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "너는 한국어 금융 리포트 분석 및 요약에 특화된 RAG AI 어시스턴트야. "
-            "주어진 컨텍스트와 대화 히스토리를 참고하여 답변하고, 없는 정보는 지어내지 마.",
+            "너는 한국어 금융 리포트 분석 및 요약에 특화된 AI 어시스턴트야. "
+            "컨텍스트가 제공되면 그 안에서만 답변하고, 없는 정보는 지어내지 마. "
+            "컨텍스트가 없으면 일반적인 금융/경제 지식으로 친절하게 답변해.",
         ),
         (
             "user",
@@ -64,17 +75,26 @@ CONVERSATION_RAG_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
+# ===================================
+# 대화형 RAG 응답 생성
+# ===================================
+
 
 def generate_conversation_answer(
-    question: str, context: str, history: Optional[List[Dict]] = None
+    question: str,
+    context: str,
+    document_id: Optional[UUID] = None,
+    history: Optional[List[Dict]] = None,
+    user_level: UserLevel = UserLevel.INTERMEDIATE,
 ) -> Dict[str, Any]:
     """
     대화 히스토리를 포함한 답변 생성
 
     Args:
         question: 현재 질문
-        context: RAG 검색 컨텍스트
+        context: RAG 검색 컨텍스트 (빈 문자열이면 일반 대화)
         history: 이전 대화 히스토리 [{"role": "user/assistant", "content":"..."}]
+        user_level: 사용자 금융 지식 레벨 (기본: beginner)
 
     Returns:
         {
@@ -84,26 +104,57 @@ def generate_conversation_answer(
         }
     """
 
-    # 대화 히스토리 포멧팅
+    # 1. 대화 히스토리 포맷팅
     history_text = ""
-
     if history:
         for msg in history[-5:]:  # 최근 5개만
             role_name = "사용자" if msg["role"] == "user" else "어시스턴트"
             history_text += f"{role_name}: {msg['content']}\n"
 
-    # TODO 프롬프트 교체
-    chain = CONVERSATION_RAG_PROMPT | llm
+    # 2. document_id 유무에 따라 프롬프트 선택
+    if document_id:
+        retrieved_context = (
+            f"[대화 히스토리]\n{history_text}\n\n[검색된 문서 정보]\n{context}"
+        )
 
-    result = chain.invoke(
-        {
-            "history": history_text,
-            "context": context,
-            "question": question,
-        }
-    )
+        prompt_text = get_document_rag_context_response_prompt(
+            user_level=user_level,
+            retrieved_context=retrieved_context,
+            user_question=question,
+        )
+    else:
+        # 2-1. 컨텍스트 유무에 따라 프롬프트 선택
+        if context and context.strip():
+            # RAG 모드: 컨텍스트 기반 답변
+            # 히스토리와 검색 컨텍스트 결합
+            retrieved_context = (
+                f"[대화 히스토리]\n{history_text}\n\n[검색된 문서 정보]\n{context}"
+            )
 
-    # 토큰 사용량 추출 (LangChain response_metadata에서)
+            prompt_text = get_general_context_conversation_prompt(
+                user_level=user_level,
+                retrieved_context=retrieved_context,
+                user_question=question,
+            )
+        else:
+            # 일반 대화 모드: 금융 지식 기반 답변
+            # 히스토리만 컨텍스트로 사용 (필요시)
+            if history_text:
+                full_question = (
+                    f"[이전 대화]\n{history_text}\n\n[현재 질문]\n{question}"
+                )
+            else:
+                full_question = question
+
+            prompt_text = get_general_conversation_prompt(
+                user_level=user_level,
+                user_question=full_question,
+            )
+
+    # 3. LLM 호출
+    result = llm.invoke(prompt_text)
+
+    # 4. 토큰 사용량 추출
     token_usage = {}
     if hasattr(result, "response_metadata"):
         metadata = result.response_metadata
@@ -120,40 +171,55 @@ def generate_conversation_answer(
     }
 
 
+# ===================================
+# 후속 질문 생성
+# ===================================
+
+
 def generate_follow_up_questions(
-    question: str, answer: str, context: str, num_questions: int = 3
+    question: str,
+    answer: str,
+    context: str,
+    user_level: UserLevel = UserLevel.INTERMEDIATE,
+    num_questions: int = 3,
 ) -> List[str]:
     """
-    후속 질문 3개 생성
+    후속 질문 생성 (XML 파싱)
+
+    Args:
+        question: 원래 질문
+        answer: AI 답변
+        context: 참조 컨텍스트
+        user_level: 사용자 레벨
+        num_questions: 생성할 질문 수 (기본: 3)
+
+    Returns:
+        ["질문1", "질문2", "질문3"]
     """
-    # TODO 프롬프트 교체
-    FOLLOWUP_PROMPT = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                "너는 사용자의 이해를 돕기 위한 후속 질문을 생성하는 AI야. "
-                "답변 내용을 기반으로 자연스럽게 이어질 수 있는 질문 3개를 생성해.",
-            ),
-            (
-                "user",
-                "[질문]\n{question}\n\n[답변]\n{answer}\n\n[컨텍스트]\n{context}\n\n"
-                "위 내용을 바탕으로 사용자가 궁금해할 만한 후속 질문 3개를 생성해줘. "
-                "각 질문은 한 줄로, 번호 없이 작성해.",
-            ),
-        ]
+
+    # 1. 참조 텍스트 구성
+    reference_text = (
+        f"[원래 질문]\n{question}\n\n[AI 답변]\n{answer}\n\n[컨텍스트]\n{context[:300]}"
     )
 
-    chain = FOLLOWUP_PROMPT | llm
-    result = chain.invoke(
-        {
-            "question": question,
-            "answer": answer,
-            "context": context[:300],  # 컨텍스트 일부만
-        }
+    # 2. 프롬프트 생성
+    prompt_text = get_followup_questions_prompt(
+        user_level=user_level, reference_text=reference_text
     )
 
-    # 응답을 줄바꿈으로 분리하여 3개 추출
-    questions = [q.strip() for q in result.content.strip().split("\n") if q.strip()]
+    # 3. LLM 호출
+    result = llm.invoke(prompt_text)
+
+    # 4. XML 파싱
+    response_text = result.content.strip()
+
+    # <question> 태그 추출
+    question_pattern = r"<question>(.*?)</question>"
+    questions = re.findall(question_pattern, response_text, re.DOTALL)
+
+    # 공백 제거 및 정리
+    questions = [q.strip() for q in questions if q.strip()]
+
     return questions[:num_questions]
 
 

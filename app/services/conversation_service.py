@@ -275,7 +275,11 @@ class ConversationService:
             raise
 
     async def process_user_message(
-        self, conversation_id: UUID, user_id: UUID, content: str
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+        content: str,
+        user_level: str = "beginner",
     ) -> Message:
         """
         비즈니스 로직: 메시지 처리 및 AI 응답 생성
@@ -303,6 +307,7 @@ class ConversationService:
                 question=content,
                 document_id=conversation.primary_document_id,
                 conversation_history=history,
+                user_level=user_level,
             )
 
             # 5. AI 메시지 저장
