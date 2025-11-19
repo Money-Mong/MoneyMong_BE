@@ -257,7 +257,21 @@ async def send_message(
             user_id=current_user.id,
             content=request.content,
         )
-        return ai_message
+
+        # SQLAlchemy 모델을 Pydantic 모델로 수동 변환
+        return MessageCreateResponse(
+            id=str(ai_message.id),
+            conversation_id=str(ai_message.conversation_id),
+            role=ai_message.role,
+            content=ai_message.content,
+            cited_chunks=[str(chunk_id) for chunk_id in ai_message.cited_chunks],
+            follow_up_questions=ai_message.follow_up_questions,
+            reference_context=ai_message.reference_context,
+            model_version=ai_message.model_version,
+            token_usage=ai_message.token_usage,
+            latency_ms=ai_message.latency_ms,
+            created_at=ai_message.created_at,
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
