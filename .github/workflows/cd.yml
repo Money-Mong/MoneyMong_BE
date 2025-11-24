@@ -42,6 +42,10 @@ jobs:
             echo "Stopping old containers..."
             docker compose down
 
+            echo "Cleaning up Docker resources..."
+            docker system prune -af --volumes
+            docker builder prune -af
+
             echo "Building Docker images..."
             docker compose build --no-cache
 
