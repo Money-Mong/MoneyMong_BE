@@ -2,21 +2,13 @@
 
 import os
 import re
-from typing import Any, Dict, List, Optional
-from uuid import UUID
+from typing import List
 
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_upstage import ChatUpstage
-from openai import OpenAI
 
-from app.core.prompts import (
-    UserLevel,
-    get_document_rag_context_response_prompt,
-    get_followup_questions_prompt,
-    get_general_context_conversation_prompt,
-    get_general_conversation_prompt,
-)
+from app.core.prompts import UserLevel, get_followup_questions_prompt
 
 
 load_dotenv()
@@ -46,9 +38,13 @@ RAG_PROMPT = ChatPromptTemplate.from_messages(
 
 
 def generate_answer(question: str, context: str) -> str:
-    """LangChain 체인 방식으로 답변 생성"""
+    """
+    간단한 RAG 답변 생성 (비대화형)
 
-    chain = RAG_PROMPT | llm  # Prompt → LLM 연결
+    대화 히스토리가 필요 없는 단순 질의응답용
+    대화형 RAG는 app.core.memory.run_conversation() 사용
+    """
+    chain = RAG_PROMPT | llm
 
     result = chain.invoke(
         {
@@ -58,117 +54,6 @@ def generate_answer(question: str, context: str) -> str:
     )
 
     return result.content.strip()
-
-
-CONVERSATION_RAG_PROMPT = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            "너는 한국어 금융 리포트 분석 및 요약에 특화된 AI 어시스턴트야. "
-            "컨텍스트가 제공되면 그 안에서만 답변하고, 없는 정보는 지어내지 마. "
-            "컨텍스트가 없으면 일반적인 금융/경제 지식으로 친절하게 답변해.",
-        ),
-        (
-            "user",
-            "[대화 히스토리]\n{history}\n\n[Context]\n{context}\n\n[현재 질문]\n{question}",
-        ),
-    ]
-)
-
-# ===================================
-# 대화형 RAG 응답 생성
-# ===================================
-
-
-def generate_conversation_answer(
-    question: str,
-    context: str,
-    document_id: Optional[UUID] = None,
-    history: Optional[List[Dict]] = None,
-    user_level: UserLevel = UserLevel.INTERMEDIATE,
-) -> Dict[str, Any]:
-    """
-    대화 히스토리를 포함한 답변 생성
-
-    Args:
-        question: 현재 질문
-        context: RAG 검색 컨텍스트 (빈 문자열이면 일반 대화)
-        history: 이전 대화 히스토리 [{"role": "user/assistant", "content":"..."}]
-        user_level: 사용자 금융 지식 레벨 (기본: beginner)
-
-    Returns:
-        {
-            "answer": str,
-            "model": str,
-            "token_usage": Dict
-        }
-    """
-
-    # 1. 대화 히스토리 포맷팅
-    history_text = ""
-    if history:
-        for msg in history[-5:]:  # 최근 5개만
-            role_name = "사용자" if msg["role"] == "user" else "어시스턴트"
-            history_text += f"{role_name}: {msg['content']}\n"
-
-    # 2. document_id 유무에 따라 프롬프트 선택
-    if document_id:
-        retrieved_context = (
-            f"[대화 히스토리]\n{history_text}\n\n[검색된 문서 정보]\n{context}"
-        )
-
-        prompt_text = get_document_rag_context_response_prompt(
-            user_level=user_level,
-            retrieved_context=retrieved_context,
-            user_question=question,
-        )
-    else:
-        # 2-1. 컨텍스트 유무에 따라 프롬프트 선택
-        if context and context.strip():
-            # RAG 모드: 컨텍스트 기반 답변
-            # 히스토리와 검색 컨텍스트 결합
-            retrieved_context = (
-                f"[대화 히스토리]\n{history_text}\n\n[검색된 문서 정보]\n{context}"
-            )
-
-            prompt_text = get_general_context_conversation_prompt(
-                user_level=user_level,
-                retrieved_context=retrieved_context,
-                user_question=question,
-            )
-        else:
-            # 일반 대화 모드: 금융 지식 기반 답변
-            # 히스토리만 컨텍스트로 사용 (필요시)
-            if history_text:
-                full_question = (
-                    f"[이전 대화]\n{history_text}\n\n[현재 질문]\n{question}"
-                )
-            else:
-                full_question = question
-
-            prompt_text = get_general_conversation_prompt(
-                user_level=user_level,
-                user_question=full_question,
-            )
-
-    # 3. LLM 호출
-    result = llm.invoke(prompt_text)
-
-    # 4. 토큰 사용량 추출
-    token_usage = {}
-    if hasattr(result, "response_metadata"):
-        metadata = result.response_metadata
-        token_usage = {
-            "prompt": metadata.get("prompt_tokens", 0),
-            "completion": metadata.get("completion_tokens", 0),
-            "total": metadata.get("total_tokens", 0),
-        }
-
-    return {
-        "answer": result.content.strip(),
-        "model": "solar-pro2",
-        "token_usage": token_usage,
-    }
 
 
 # ===================================
