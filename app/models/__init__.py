@@ -2,7 +2,7 @@
 SQLAlchemy ORM 모델 정의
 """
 
-from app.models.conversation import Conversation, ConversationHistory, Message
+from app.models.conversation import Conversation, Message
 from app.models.document import (
     Document,
     DocumentAsset,
@@ -25,5 +25,4 @@ __all__ = [
     "DocumentHistory",
     "Conversation",
     "Message",
-    "ConversationHistory",
 ]

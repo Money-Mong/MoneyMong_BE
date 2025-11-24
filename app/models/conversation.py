@@ -60,12 +60,7 @@ class Conversation(Base):
     messages = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
     )
-    history = relationship(
-        "ConversationHistory",
-        back_populates="conversation",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
+    # Note: 대화 히스토리는 LangGraph checkpoints 테이블에서 관리
 
 
 class Message(Base):
@@ -109,32 +104,7 @@ class Message(Base):
     conversation = relationship("Conversation", back_populates="messages")
 
 
-class ConversationHistory(Base):
-    """Langchain용 대화 히스토리 (메모리)"""
-
-    __tablename__ = "conversations_history"
-    __table_args__ = (
-        UniqueConstraint(
-            "conversation_id", "session_id", name="uq_conversations_history_session"
-        ),
-    )
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    conversation_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("conversations.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-
-    session_id = Column(String(255), nullable=False)  # Langchain 세션 ID
-    history_data = Column(
-        JSONB, nullable=False, default=dict
-    )  # Langchain 메모리 데이터 (직렬화)
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now())  # 생성일
-    updated_at = Column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )  # 최종 수정일
-
-    # 관계
-    conversation = relationship("Conversation", back_populates="history")
+# Note: ConversationHistory 테이블 제거됨
+# 대화 메모리는 LangGraph checkpoints/checkpoint_writes 테이블에서 자동 관리
+# - checkpoints: 대화 상태 저장 (thread_id = conversation_id)
+# - checkpoint_writes: 체크포인트 변경 이력
