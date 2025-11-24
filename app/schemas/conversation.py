@@ -110,6 +110,7 @@ class SendMessageRequest(BaseModel):
     """메시지 전송 요청"""
 
     content: str
+    user_level: Optional[str] = "beginner"  # 'beginner' | 'intermediate' | 'advanced'
 
 
 # ===================================

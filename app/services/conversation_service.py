@@ -10,8 +10,8 @@ from uuid import UUID
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from app.core.memory import run_conversation
 from app.models.conversation import Conversation, Message
-from app.services.rag_service import RAGService
 
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,6 @@ class ConversationService:
 
     def __init__(self, db: Session):
         self.db = db
-        self.rag_service = RAGService(db)
 
     def get_conversations(
         self, user_id: UUID, skip: int = 0, limit: int = 20
@@ -275,15 +274,24 @@ class ConversationService:
             raise
 
     async def process_user_message(
-        self, conversation_id: UUID, user_id: UUID, content: str
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+        content: str,
+        user_level: str = "beginner",
     ) -> Message:
         """
         비즈니스 로직: 메시지 처리 및 AI 응답 생성
 
+        Graph가 자동으로:
+        - 대화 히스토리 로드 (체크포인트에서)
+        - RAG 파이프라인 실행 (검색 → LLM → 후속질문)
+        - 새로운 메시지 추가
+        - 체크포인트 저장
+
         Service 책임:
         - 대화 소유권 확인
-        - 메시지 저장
-        - RAG 조율
+        - 메시지 저장 (DB용, API 응답용)
         - 트랜잭션 관리
         """
         try:
@@ -292,26 +300,25 @@ class ConversationService:
             if not conversation:
                 raise ValueError("Conversation not found")
 
-            # 2. 사용자 메시지 저장
-            user_message = self._save_user_message(conversation_id, content)
+            # 2. Graph 실행 (자동으로 히스토리 로드 + RAG + 체크포인트 저장)
 
-            # 3. 히스토리 조회
-            history = self._get_message_history(conversation_id, limit=10)
-
-            # 4. RAG 실행 (RAG Service에 위임)
-            rag_result = await self.rag_service.generate_conversation_response(
+            rag_result = await run_conversation(
+                conversation_id=conversation_id,
                 question=content,
                 document_id=conversation.primary_document_id,
-                conversation_history=history,
+                user_level=user_level,
             )
 
-            # 5. AI 메시지 저장
+            # 3. 사용자 메시지 저장 (DB용, API 응답)
+            user_message = self._save_user_message(conversation_id, content)
+
+            # 4. AI 응답 저장 (DB용, API 응답)
             ai_message = self._save_ai_message(conversation_id, rag_result)
 
-            # 6. 대화 시간 갱신
+            # 5. 대화 시간 갱신
             self._update_conversation_timestamp(conversation)
 
-            # 7. 커밋
+            # 6. 커밋
             self.db.commit()
             self.db.refresh(ai_message)
 
@@ -345,18 +352,6 @@ class ConversationService:
         self.db.add(msg)
         self.db.flush()
         return msg
-
-    def _get_message_history(self, conversation_id: UUID, limit: int = 5) -> list:
-        """Private helper: 히스토리 조회 및 포맷팅"""
-        messages = (
-            self.db.query(Message)
-            .filter(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.desc())
-            .limit(limit)
-            .all()
-        )
-        messages.reverse()
-        return [{"role": m.role, "content": m.content} for m in messages]
 
     def _update_conversation_timestamp(self, conversation: Conversation):
         """Private helper: 시간 갱신"""

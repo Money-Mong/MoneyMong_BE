@@ -1,6 +1,6 @@
 # app/core/metriever.py
 import json
-from typing import Optional
+from typing import Dict, Optional
 from uuid import UUID
 
 from sqlalchemy import text
@@ -84,3 +84,58 @@ def retrieve_chunks_for_document(
 
     rows = db.execute(sql, params).fetchall()
     return rows
+
+
+def should_use_chunks(
+    document_id: Optional[str],
+    chunks: list,
+    similarity_threshold: float = 0.7,
+) -> Dict[str, any]:
+    """
+    청크 사용 여부 판단
+
+    Args:
+        document_id: 문서 ID (있으면 문서 기반 대화)
+        chunks: 검색된 청크 리스트 (similarity 포함)
+        similarity_threshold: 유사도 임계값 (기본: 0.7)
+
+    Returns:
+        {
+            "use_chunks": bool,
+            "max_similarity": float,
+            "reason": str
+        }
+    """
+
+    # 1. document_id가 있으면 무조건 청크 사용
+    if document_id:
+        max_sim = max([c.similarity for c in chunks]) if chunks else 0.0
+        return {
+            "use_chunks": True,
+            "max_similarity": max_sim,
+            "reason": "document_based_conversation",
+        }
+
+    # 2. 청크가 없으면 일반 대화
+    if not chunks:
+        return {
+            "use_chunks": False,
+            "max_similarity": 0.0,
+            "reason": "no_relevant_chunks",
+        }
+
+    # 3. 유사도 기반 판단
+    max_similarity = max([c.similarity for c in chunks])
+
+    if max_similarity >= similarity_threshold:
+        return {
+            "use_chunks": True,
+            "max_similarity": max_similarity,
+            "reason": "relevant_chunks_found",
+        }
+    else:
+        return {
+            "use_chunks": False,
+            "max_similarity": max_similarity,
+            "reason": "low_similarity",
+        }

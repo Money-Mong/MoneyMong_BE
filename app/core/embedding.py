@@ -1,7 +1,7 @@
 # app/utils/embedding.py
 # app/utils/embedding.py
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 
 # HuggingFace embedding model (Ko/En/Ja 용)
