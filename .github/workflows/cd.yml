@@ -1,0 +1,75 @@
+name: CD - Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.EC2_HOST }}
+          SSH_USER: ${{ secrets.EC2_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        env:
+          SSH_HOST: ${{ secrets.EC2_HOST }}
+          SSH_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << 'ENDSSH'
+            set -e
+
+            echo "Navigating to project directory..."
+            cd ~/MoneyMong_BE || { echo "Project directory not found"; exit 1; }
+
+            echo "Pulling latest code..."
+            git pull origin main
+
+            echo "Building Docker images..."
+            docker-compose build --no-cache
+
+            echo "Stopping old containers..."
+            docker-compose down
+
+            echo "Starting new containers..."
+            docker-compose up -d
+
+            echo "Cleaning up old Docker images..."
+            docker image prune -af
+
+            echo "Deployment completed"
+
+            echo "Container status:"
+            docker-compose ps
+
+            echo "Health check:"
+            sleep 5
+            curl -f http://localhost:8000/health || echo "Health check failed"
+          ENDSSH
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.EC2_HOST }}/health)
+          if [ $response -eq 200 ]; then
+            echo "Deployment successful"
+          else
+            echo "Deployment verification failed: $response"
+            exit 1
+          fi
