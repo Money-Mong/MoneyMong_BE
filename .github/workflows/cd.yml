@@ -20,20 +20,11 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           SSH_HOST: ${{ secrets.EC2_HOST }}
-          SSH_USER: ${{ secrets.EC2_USER }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
-
-          # SSH 키 형식 확인
-          echo "Checking SSH key format..."
-          head -n 1 ~/.ssh/deploy_key
-
-          # SSH 연결 테스트
-          echo "Testing SSH connection..."
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SSH_USER@$SSH_HOST "echo 'SSH connection successful'"
+          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy to EC2
         env:
@@ -43,41 +34,42 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << 'ENDSSH'
             set -e
 
-            echo "Navigating to project directory..."
-            cd ~/MoneyMong_BE || { echo "Project directory not found"; exit 1; }
+            cd ~/MoneyMong_BE
 
             echo "Pulling latest code..."
             git pull origin main
 
-            echo "Building Docker images..."
-            docker compose build --no-cache
-
             echo "Stopping old containers..."
             docker compose down
+
+            echo "Building Docker images..."
+            docker compose build --no-cache
 
             echo "Starting new containers..."
             docker compose up -d
 
+            echo "Waiting for container to be healthy..."
+            timeout=300
+            elapsed=0
+            while [ $elapsed -lt $timeout ]; do
+              if docker compose ps | grep -q "healthy"; then
+                echo "Container is healthy"
+                break
+              fi
+              echo "Waiting... ($elapsed/$timeout seconds)"
+              sleep 10
+              elapsed=$((elapsed + 10))
+            done
+
+            if [ $elapsed -ge $timeout ]; then
+              echo "Container failed to become healthy"
+              docker compose logs --tail=50
+              exit 1
+            fi
+
             echo "Cleaning up old Docker images..."
             docker image prune -af
 
-            echo "Deployment completed"
-
-            echo "Container status:"
+            echo "Deployment completed successfully"
             docker compose ps
-
-            echo "Health check:"
-            sleep 5
-            curl -f http://localhost:8000/health || echo "Health check failed"
           ENDSSH
-
-      - name: Verify deployment
-        run: |
-          sleep 10
-          response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.EC2_HOST }}/health)
-          if [ $response -eq 200 ]; then
-            echo "Deployment successful"
-          else
-            echo "Deployment verification failed: $response"
-            exit 1
-          fi
