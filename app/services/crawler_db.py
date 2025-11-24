@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Naver Finance 기업리포트 - 경량 테스트 버전
+Naver Finance 기업리포트
 - 오늘(Asia/Seoul) 기준 하루치(오늘-1일 이후)만 저장
 - 상세 페이지에서 a.con_link[href$=".pdf"] 추출
 - 발행월(YYYY-MM) 폴더로 저장
 
 - MODE = "INIT" -> 1년치 전체 수집
 - MODE = "DAILY" -> 오늘 -1 이후만
+- MODE = "RANGE" -> YYYY-MM-DD로 시작일 종료일 설정
     - 매일 자동 실행용
 - 문서 단위 트랜잭션, DB 중복 확인
 
@@ -36,9 +37,7 @@ BASE = "https://finance.naver.com"
 LIST_TPL = (
     "https://finance.naver.com/research/company_list.naver?page={page}"  # 풀페이지
 )
-OUT_DIR = os.path.join(
-    "raw-documents", "naver_corp_reports"
-)  # S3 raw-documents 하위 폴더
+OUT_DIR = "raw-documents"
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
 REFERER = "https://finance.naver.com/research/company_list.naver"
 TIMEOUT = 30
@@ -66,23 +65,35 @@ def get_connection():
 
 def resolve_crawl_window(run_mode: str, today: dt.date):
     """
-    Return (cutoff_date, max_page) for the requested mode.
+    Return (start_date, end_date, max_page) for the requested mode.
     """
     run_mode = run_mode.upper()
     if run_mode == "INIT":
-        return today - dt.timedelta(days=365), 2000
+        return today - dt.timedelta(days=365), today, 2000
     if run_mode == "DAILY":
-        return today - dt.timedelta(days=1), 500
+        return today - dt.timedelta(days=1), today, 500
     raise ValueError(f"Unsupported mode: {run_mode}")
 
 
+def ensure_date(value, field: str):
+    if isinstance(value, dt.date):
+        return value
+    if isinstance(value, str):
+        try:
+            return dt.datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise ValueError(f"{field} must be YYYY-MM-DD formatted") from exc
+    raise ValueError(f"{field} must be a date or ISO date string")
+
+
 def build_crawl_result(
-    run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date
+    run_mode, today, cutoff_date, end_date, pdf_saved, db_saved, last_seen_date
 ):
     return {
         "mode": run_mode,
         "today": today,
         "cutoff_date": cutoff_date,
+        "end_date": end_date,
         "pdf_saved": pdf_saved,
         "db_saved": db_saved,
         "total_saved": db_saved,  # backwards compatibility
@@ -101,31 +112,23 @@ def parse_date(text: str, today):
     return None
 
 
-def norm_filename(s: str, maxlen: int = 150):
-    s = re.sub(r"\s+", " ", s).strip()
-    s = re.sub(r'[\\/:"*?<>|]+', "_", s)
-    return (s[:maxlen].rstrip() if len(s) > maxlen else s) or "report"
-
-
-## 날짜
-# def month_dir(d: dt.date):
-#     return os.path.join(OUT_DIR, f"{d:%Y-%m}")
-
-
-def date_hierarchy_dir(d: dt.date):
-    """
-    리포트 날짜별로 계층형 폴더 생성:
-    OUT_DIR/YYYY/Mon/DD  (예: 2025/Nov/07)
-    """
-    month_dirname = d.strftime("%b")  # Jan, Feb, ...
-    return os.path.join(OUT_DIR, f"{d:%Y}", month_dirname, f"{d:%d}")
-
-
 # ------------------- 메인 로직 -------------------
-def crawl_multi_pages(mode: str | None = None):
-    run_mode = (mode or MODE).upper()
+def crawl_multi_pages(mode: str | None = None, start_date=None, end_date=None):
     today = dt.datetime.now(KST).date()
-    cutoff_date, max_page = resolve_crawl_window(run_mode, today)
+    run_mode = (mode or MODE).upper()
+
+    if run_mode == "RANGE":
+        if not start_date or not end_date:
+            raise ValueError("start_date and end_date are required for RANGE mode")
+        cutoff_date = ensure_date(start_date, "start_date")
+        end_limit = ensure_date(end_date, "end_date")
+        if cutoff_date > end_limit:
+            raise ValueError("start_date cannot be later than end_date")
+        max_page = 2000
+        run_mode_label = f"RANGE:{cutoff_date}->{end_limit}"
+    else:
+        cutoff_date, end_limit, max_page = resolve_crawl_window(run_mode, today)
+        run_mode_label = run_mode
 
     sess = requests.Session()
     sess.headers.update({"User-Agent": UA, "Referer": REFERER})
@@ -174,6 +177,8 @@ def crawl_multi_pages(mode: str | None = None):
             last_seen_date = pub_date
 
             # 컷오프 필터
+            if pub_date > end_limit:
+                continue
             if pub_date < cutoff_date:
                 continue  # 이 행은 패스, 다른 행 확인(페이지 전체 종료 판단은 아래에서)
             page_has_target = True
@@ -269,10 +274,8 @@ def crawl_multi_pages(mode: str | None = None):
 
             # PDF 다운로드
             ## 저장 경로 및 파일명 구성
-            out_dir = date_hierarchy_dir(pub_date).replace(os.sep, "/")
-            out_dir = out_dir.strip("/")
-            fname = norm_filename(f"{title}") + ".pdf"
-            s3_key = f"{out_dir}/{fname}"
+            fname = f"{pub_date:%Y%m%d}_{nid}.pdf"
+            s3_key = f"{OUT_DIR}/{pub_date:%Y%m%d}/{fname}"
             s3_uri = f"s3://{settings.AWS_S3_BUCKET}/{s3_key}"
 
             try:
@@ -330,7 +333,13 @@ def crawl_multi_pages(mode: str | None = None):
             if DEBUG_ONE:
                 print("[INFO] DEBUG_ONE=True → 첫 문서까지만 처리 후 종료")
                 return build_crawl_result(
-                    run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date
+                    run_mode_label,
+                    today,
+                    cutoff_date,
+                    end_limit,
+                    pdf_saved,
+                    db_saved,
+                    last_seen_date,
                 )
 
             time.sleep(SLEEP)
@@ -347,11 +356,17 @@ def crawl_multi_pages(mode: str | None = None):
             break
 
     print(
-        f"[DONE] 모드={run_mode} / 기준: {cutoff_date}~{today} / "
+        f"[DONE] 모드={run_mode_label} / 기준: {cutoff_date}~{end_limit} / "
         f"PDF 저장={pdf_saved}건 / DB 저장={db_saved}건"
     )
     return build_crawl_result(
-        run_mode, today, cutoff_date, pdf_saved, db_saved, last_seen_date
+        run_mode_label,
+        today,
+        cutoff_date,
+        end_limit,
+        pdf_saved,
+        db_saved,
+        last_seen_date,
     )
 
 

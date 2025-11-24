@@ -72,7 +72,7 @@ class DocumentListResponse(BaseModel):
     """문서 목록 응답 (페이지네이션)"""
 
     total: int
-    items: List[DocumentBase]
+    items: List[DocumentWithSummary]
 
 
 class DocumentDetailResponse(DocumentBase):
