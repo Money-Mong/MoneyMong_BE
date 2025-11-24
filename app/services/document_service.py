@@ -3,10 +3,11 @@ Document Service Layer
 """
 
 import logging
+from datetime import date
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import desc
+from sqlalchemy import asc, desc, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.document import Document, DocumentSummary
@@ -21,27 +22,82 @@ class DocumentService:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_documents(self, skip: int = 0, limit: int = 20) -> List[Document]:
+    def get_documents(
+        self,
+        skip: int = 0,
+        limit: int = 20,
+        search: Optional[str] = None,
+        sort: str = "published_date",
+        order: str = "desc",
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> List[Document]:
         """
         전체 문서 목록 조회 (모든 사용자 공통)
 
         Args:
             skip: 건너뛸 문서 수
             limit: 조회할 문서 수
+            search: 검색어 (제목, 요약 등)
+            sort: 정렬 기준 필드
+            order: 정렬 방향 (asc, desc)
+            start_date: published_date 시작일
+            end_date: published_date 종료일
 
         Returns:
             문서 목록
         """
         try:
-            documents = (
+            # 기본 쿼리: 완료된 문서만 조회
+            query = (
                 self.db.query(Document)
-                .options(joinedload(Document.summary))  # DocumentSummary 조인
+                .options(joinedload(Document.summary))  # 결과 로딩용 eager join
                 .filter(Document.processing_status == "completed")
-                .order_by(desc(Document.created_at))
-                .offset(skip)
-                .limit(limit)
-                .all()
             )
+
+            # 1. 발행일 범위 필터
+            if start_date:
+                query = query.filter(Document.published_date >= start_date)
+            if end_date:
+                query = query.filter(Document.published_date <= end_date)
+
+            # 2. 검색어 필터링 (제목, 요약, 엔터티)
+            if search:
+                search_term = f"%{search}%"
+
+                # 요약(summary_long)을 WHERE 절에서 쓰기 위해 실제로 조인
+                query = query.outerjoin(
+                    DocumentSummary,
+                    DocumentSummary.document_id == Document.id,
+                )
+
+                query = query.filter(
+                    or_(
+                        Document.title.ilike(search_term),
+                        DocumentSummary.summary_long.ilike(search_term),
+                        DocumentSummary.entities["main_company"].astext.ilike(
+                            search_term
+                        ),
+                        DocumentSummary.entities["main_ticker"].astext.ilike(
+                            search_term
+                        ),
+                    )
+                )
+
+            # 3. 정렬
+            sort_map = {
+                "published_date": Document.published_date,
+                "title": Document.title,
+            }
+            sort_column = sort_map.get(sort, Document.published_date)
+
+            if order == "asc":
+                query = query.order_by(asc(sort_column))
+            else:
+                query = query.order_by(desc(sort_column))
+
+            # 4. 페이지네이션
+            documents = query.offset(skip).limit(limit).all()
 
             logger.info(f"Retrieved {len(documents)} documents")
             return documents
@@ -118,15 +174,56 @@ class DocumentService:
             )
             raise
 
-    def count_documents(self) -> int:
+    def count_documents(
+        self,
+        search: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> int:
         """
         전체 문서 개수 조회
+
+        Args:
+            search: 검색어 (get_documents와 동일한 조건)
+            start_date, end_date: published_date 범위
 
         Returns:
             문서 개수
         """
         try:
-            count = self.db.query(Document).count()
+            # 기본 쿼리: 완료된 문서만 기준
+            query = self.db.query(Document).filter(
+                Document.processing_status == "completed"
+            )
+
+            # get_documents와 동일한 조건 적용
+            if start_date:
+                query = query.filter(Document.published_date >= start_date)
+            if end_date:
+                query = query.filter(Document.published_date <= end_date)
+
+            if search:
+                search_term = f"%{search}%"
+
+                query = query.outerjoin(
+                    DocumentSummary,
+                    DocumentSummary.document_id == Document.id,
+                )
+
+                query = query.filter(
+                    or_(
+                        Document.title.ilike(search_term),
+                        DocumentSummary.summary_long.ilike(search_term),
+                        DocumentSummary.entities["main_company"].astext.ilike(
+                            search_term
+                        ),
+                        DocumentSummary.entities["main_ticker"].astext.ilike(
+                            search_term
+                        ),
+                    )
+                )
+
+            count = query.count()
             return count
 
         except Exception as e:
