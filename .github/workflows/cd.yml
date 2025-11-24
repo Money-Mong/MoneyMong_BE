@@ -27,6 +27,14 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
 
+          # SSH 키 형식 확인
+          echo "Checking SSH key format..."
+          head -n 1 ~/.ssh/deploy_key
+
+          # SSH 연결 테스트
+          echo "Testing SSH connection..."
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SSH_USER@$SSH_HOST "echo 'SSH connection successful'"
+
       - name: Deploy to EC2
         env:
           SSH_HOST: ${{ secrets.EC2_HOST }}
@@ -42,13 +50,13 @@ jobs:
             git pull origin main
 
             echo "Building Docker images..."
-            docker-compose build --no-cache
+            docker compose build --no-cache
 
             echo "Stopping old containers..."
-            docker-compose down
+            docker compose down
 
             echo "Starting new containers..."
-            docker-compose up -d
+            docker compose up -d
 
             echo "Cleaning up old Docker images..."
             docker image prune -af
@@ -56,7 +64,7 @@ jobs:
             echo "Deployment completed"
 
             echo "Container status:"
-            docker-compose ps
+            docker compose ps
 
             echo "Health check:"
             sleep 5
